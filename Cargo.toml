@@ -1,0 +1,9 @@
+[package]
+name = "debruijn-mapping"
+version = "0.1.0"
+authors = ["avi.srivastava <avi.srivastava@10xgenomics.com>"]
+
+[dependencies]
+debruijn = { path = "rust-debruijn" }
+bio = "*"
+clap = "~2.31"
