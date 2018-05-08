@@ -3,18 +3,23 @@ extern crate bio;
 extern crate clap;
 
 // Import some modules
-use std::fs::File;
 use std::io;
+use std::str;
+use std::fs::File;
 use std::io::Write;
+use std::collections::HashSet;
+use std::iter::FromIterator;
 
 use debruijn::graph::{BaseGraph};
 use debruijn::compression::{SimpleCompress, compress_graph};
 use debruijn::dna_string::*;
 use debruijn::{filter, kmer, Exts};
 use debruijn::Mer;
+use debruijn::Dir;
+use debruijn::Kmer;
+
 use clap::{Arg, App};
 use bio::io::fasta;
-use std::str;
 
 pub type KmerType = kmer::Kmer32;
 const MIN_KMERS: usize = 1;
@@ -33,14 +38,15 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
         let dna_string = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
         // obtain sequence and push into the relevant vector
-        seqs.push((dna_string, Exts::empty(), ()));
+        seqs.push((dna_string, Exts::empty(), trancript_counter));
 
         trancript_counter += 1;
         if trancript_counter % 1000 == 0 {
             print!("\r Done Reading {} transcripts", trancript_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
-        break;
+        // looking for two transcripts
+        if trancript_counter == 2 { break; }
     }
 
     println!("\nStarting kmer filtering");
@@ -51,15 +57,16 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     println!("Starting uncompressed de-bruijn graph construction");
 
     // Create a DBG with one node per input kmer
-    let mut base_graph: BaseGraph<KmerType, u16> = BaseGraph::new(STRANDED);
+    let mut base_graph: BaseGraph<KmerType, HashSet<u16>> = BaseGraph::new(STRANDED);
 
-    for (kmer, (exts, _)) in valid_kmers.clone() {
-        base_graph.add(kmer.iter(), exts, 0 as u16);
+    for (kmer, (exts, colors_vec)) in valid_kmers.clone() {
+        base_graph.add(kmer.iter(), exts, HashSet::from_iter(colors_vec));
     }
     let uncompressed_dbg = base_graph.finish();
 
+    //uncompressed_dbg.print_with_data();
     println!("Done uncompressed de-bruijn graph construction; Starting Compression");
-    let spec = SimpleCompress::new(|d1: u16, d2: &u16| d1 + d2);
+    let spec = SimpleCompress::new( |d1: HashSet<u16>, _d2: &HashSet<u16>| d1);
     let simp_dbg = compress_graph(STRANDED, spec, uncompressed_dbg, None);
 
     let is_cmp = simp_dbg.is_compressed();
@@ -69,6 +76,20 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     }
 
     println!("Finished Indexing !");
+
+    // Todo Should be added to ![cfg(test)] but doing here right now
+    simp_dbg.print_with_data();
+    println!("Starting Unit test for color extraction");
+    let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
+    let (nid, _, _) = match simp_dbg.find_link(test_kmer, Dir::Right){
+        Some(links) => links,
+        None => (std::usize::MAX, Dir::Right, false),
+    };
+    if nid == std::usize::MAX {
+        eprintln!("ERROR");
+    }
+    println!("Found Colors are");
+    println!("{:?}", simp_dbg.get_node(nid).data());
 }
 
 fn main() {
