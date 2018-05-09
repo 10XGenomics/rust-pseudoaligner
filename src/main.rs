@@ -7,14 +7,10 @@ use std::io;
 use std::str;
 use std::fs::File;
 use std::io::Write;
-use std::collections::HashSet;
-use std::iter::FromIterator;
 
-use debruijn::graph::{BaseGraph};
-use debruijn::compression::{SimpleCompress, compress_graph};
+use debruijn::compression::{SimpleCompress, compress_kmers};
 use debruijn::dna_string::*;
 use debruijn::{filter, kmer, Exts};
-use debruijn::Mer;
 use debruijn::Dir;
 use debruijn::Kmer;
 
@@ -56,32 +52,23 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     println!("Starting uncompressed de-bruijn graph construction");
 
-    // Create a DBG with one node per input kmer
-    let mut base_graph: BaseGraph<KmerType, HashSet<u16>> = BaseGraph::new(STRANDED);
+    let spec = SimpleCompress::new( |d1: Vec<u16>, _d2: &Vec<u16> |  d1 );
+    let dbg = compress_kmers(STRANDED, spec, &valid_kmers).finish();
+    println!("Done de-bruijn graph construction; ");
 
-    for (kmer, (exts, colors_vec)) in valid_kmers.clone() {
-        base_graph.add(kmer.iter(), exts, HashSet::from_iter(colors_vec));
-    }
-    let uncompressed_dbg = base_graph.finish();
-
-    //uncompressed_dbg.print_with_data();
-    println!("Done uncompressed de-bruijn graph construction; Starting Compression");
-    let spec = SimpleCompress::new( |d1: HashSet<u16>, _d2: &HashSet<u16>| d1);
-    let simp_dbg = compress_graph(STRANDED, spec, uncompressed_dbg, None);
-
-    let is_cmp = simp_dbg.is_compressed();
+    let is_cmp = dbg.is_compressed();
     if is_cmp.is_some() {
         println!("not compressed: nodes: {:?}", is_cmp);
-        simp_dbg.print();
+        dbg.print();
     }
 
     println!("Finished Indexing !");
 
     // Todo Should be added to ![cfg(test)] but doing here right now
-    simp_dbg.print_with_data();
+    dbg.print_with_data();
     println!("Starting Unit test for color extraction");
     let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
-    let (nid, _, _) = match simp_dbg.find_link(test_kmer, Dir::Right){
+    let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
         Some(links) => links,
         None => (std::usize::MAX, Dir::Right, false),
     };
@@ -89,7 +76,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
         eprintln!("ERROR");
     }
     println!("Found Colors are");
-    println!("{:?}", simp_dbg.get_node(nid).data());
+    println!("{:?}", dbg.get_node(nid).data());
 }
 
 fn main() {
