@@ -2,20 +2,23 @@ extern crate debruijn;
 extern crate bio;
 extern crate clap;
 
+// helper functions for this project
+mod utils;
+
 // Import some modules
 use std::io;
 use std::str;
 use std::fs::File;
 use std::io::Write;
-
-use debruijn::compression::{SimpleCompress, compress_kmers};
-use debruijn::dna_string::*;
-use debruijn::{filter, kmer, Exts};
-use debruijn::Dir;
-use debruijn::Kmer;
+use std::collections::HashSet;
 
 use clap::{Arg, App};
 use bio::io::fasta;
+
+use debruijn::{filter};
+use debruijn::dna_string::*;
+use debruijn::{Dir, Kmer, Exts, kmer};
+use debruijn::compression::{compress_kmers};
 
 pub type KmerType = kmer::Kmer32;
 const MIN_KMERS: usize = 1;
@@ -23,7 +26,7 @@ const STRANDED: bool = true;
 
 fn read_fasta(reader: fasta::Reader<File>) -> () {
 
-    let summarizer = filter::CountFilterSet::new(MIN_KMERS);
+    let summarizer = utils::ScmapCountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
     let mut trancript_counter = 0;
 
@@ -42,6 +45,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
         // looking for two transcripts
+        // println!("{:?}", record.id());
         if trancript_counter == 2 { break; }
     }
 
@@ -52,7 +56,9 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     println!("Starting uncompressed de-bruijn graph construction");
 
-    let spec = SimpleCompress::new( |d1: Vec<u16>, _d2: &Vec<u16> |  d1 );
+    //println!("{:?}", valid_kmers);
+
+    let spec = utils::ScmapCompress::new( | d1: HashSet<u16>, _d2: &HashSet<u16> |  _d2.clone() );
     let dbg = compress_kmers(STRANDED, spec, &valid_kmers).finish();
     println!("Done de-bruijn graph construction; ");
 
@@ -64,7 +70,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
 
     println!("Finished Indexing !");
 
-    // Todo Should be added to ![cfg(test)] but doing here right now
+    // TODO Should be added to ![cfg(test)] but doing here right now
     dbg.print_with_data();
     println!("Starting Unit test for color extraction");
     let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
