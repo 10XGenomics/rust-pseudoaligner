@@ -58,14 +58,14 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
 
     //println!("{:?}", valid_kmers);
 
-    let spec = utils::ScmapCompress::new( | d1: HashSet<u16>, _d2: &HashSet<u16> |  _d2.clone() );
+    let spec = utils::ScmapCompress::new( | d1: HashSet<u16>, _d2: &HashSet<u16> |  d1 );
     let dbg = compress_kmers(STRANDED, spec, &valid_kmers).finish();
     println!("Done de-bruijn graph construction; ");
 
     let is_cmp = dbg.is_compressed();
     if is_cmp.is_some() {
         println!("not compressed: nodes: {:?}", is_cmp);
-        dbg.print();
+        //dbg.print();
     }
 
     println!("Finished Indexing !");
