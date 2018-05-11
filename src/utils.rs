@@ -54,16 +54,15 @@ impl<D, F> ScmapCompress<D, F> {
     }
 }
 
-// TODO: Question, better way to use HashSet<u16> in a generic type ?
-impl<F> compression::CompressionSpec<HashSet<u16>> for ScmapCompress<HashSet<u16>, F>
+impl<D: PartialEq, F> compression::CompressionSpec<D> for ScmapCompress<D, F>
 where
-    for<'r> F: Fn(HashSet<u16>, &'r HashSet<u16>) -> HashSet<u16>,
+    for<'r> F: Fn(D, &'r D) -> D,
 {
-    fn reduce(&self, d: HashSet<u16>, other: &HashSet<u16>) -> HashSet<u16> {
+    fn reduce(&self, d: D, other: &D) -> D {
         (self.func)(d, other)
     }
 
-    fn join_test(&self, d1: &HashSet<u16>, d2: &HashSet<u16>) -> bool {
+    fn join_test(&self, d1: &D, d2: &D) -> bool {
         if d1 == d2 { true } else { false }
     }
 }

@@ -40,13 +40,13 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
         seqs.push((dna_string, Exts::empty(), trancript_counter));
 
         trancript_counter += 1;
-        if trancript_counter % 1000 == 0 {
+        if trancript_counter % 10000 == 0 {
             print!("\r Done Reading {} transcripts", trancript_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
         // looking for two transcripts
         // println!("{:?}", record.id());
-        if trancript_counter == 2 { break; }
+        // if trancript_counter == 2 { break; }
     }
 
     println!("\nStarting kmer filtering");
@@ -58,6 +58,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
 
     //println!("{:?}", valid_kmers);
 
+    // TODO: No use of the following lambda for the mapping pipeline.
     let spec = utils::ScmapCompress::new( | d1: HashSet<u16>, _d2: &HashSet<u16> |  d1 );
     let dbg = compress_kmers(STRANDED, spec, &valid_kmers).finish();
     println!("Done de-bruijn graph construction; ");
