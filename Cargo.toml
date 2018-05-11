@@ -7,3 +7,6 @@ authors = ["avi.srivastava <avi.srivastava@10xgenomics.com>"]
 debruijn = { path = "rust-debruijn" }
 bio = "*"
 clap = "~2.31"
+
+[profile.release]
+debug = true

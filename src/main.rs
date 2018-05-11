@@ -10,7 +10,6 @@ use std::io;
 use std::str;
 use std::fs::File;
 use std::io::Write;
-use std::collections::HashSet;
 
 use clap::{Arg, App};
 use bio::io::fasta;
@@ -26,7 +25,7 @@ const STRANDED: bool = true;
 
 fn read_fasta(reader: fasta::Reader<File>) -> () {
 
-    let summarizer = utils::ScmapCountFilterSet::new(MIN_KMERS);
+    let summarizer = filter::CountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
     let mut trancript_counter = 0;
 
@@ -46,7 +45,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
         }
         // looking for two transcripts
         // println!("{:?}", record.id());
-        // if trancript_counter == 2 { break; }
+        if trancript_counter == 2 { break; }
     }
 
     println!("\nStarting kmer filtering");
@@ -58,9 +57,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
 
     //println!("{:?}", valid_kmers);
 
-    // TODO: No use of the following lambda for the mapping pipeline.
-    let spec = utils::ScmapCompress::new( | d1: HashSet<u16>, _d2: &HashSet<u16> |  d1 );
-    let dbg = compress_kmers(STRANDED, spec, &valid_kmers).finish();
+    let dbg = compress_kmers(STRANDED, utils::ScmapCompress::new(), &valid_kmers).finish();
     println!("Done de-bruijn graph construction; ");
 
     let is_cmp = dbg.is_compressed();
