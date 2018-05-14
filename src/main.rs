@@ -1,6 +1,10 @@
 extern crate debruijn;
 extern crate bio;
 extern crate clap;
+extern crate itertools;
+extern crate pdqsort;
+extern crate boomphf;
+extern crate fxhash;
 
 // helper functions for this project
 mod utils;
@@ -25,7 +29,7 @@ const STRANDED: bool = true;
 
 fn read_fasta(reader: fasta::Reader<File>) -> () {
 
-    let summarizer = filter::CountFilterSet::new(MIN_KMERS);
+    //let summarizer = filter::CountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
     let mut trancript_counter = 0;
 
@@ -45,42 +49,42 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
         }
         // looking for two transcripts
         // println!("{:?}", record.id());
-        if trancript_counter == 2 { break; }
+        // if trancript_counter == 2 { break; }
     }
 
     println!("\nStarting kmer filtering");
-    let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
-        filter::filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED);
+    let valid_kmers =
+        utils::kmerize::<KmerType, _, _,>(seqs);
 
-    println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
-    println!("Starting uncompressed de-bruijn graph construction");
+    //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
+    //println!("Starting uncompressed de-bruijn graph construction");
 
-    //println!("{:?}", valid_kmers);
+    ////println!("{:?}", valid_kmers);
 
-    let dbg = compress_kmers(STRANDED, utils::ScmapCompress::new(), &valid_kmers).finish();
-    println!("Done de-bruijn graph construction; ");
+    //let dbg = compress_kmers(STRANDED, utils::ScmapCompress::new(), &valid_kmers).finish();
+    //println!("Done de-bruijn graph construction; ");
 
-    let is_cmp = dbg.is_compressed();
-    if is_cmp.is_some() {
-        println!("not compressed: nodes: {:?}", is_cmp);
-        //dbg.print();
-    }
+    //let is_cmp = dbg.is_compressed();
+    //if is_cmp.is_some() {
+    //    println!("not compressed: nodes: {:?}", is_cmp);
+    //    //dbg.print();
+    //}
 
-    println!("Finished Indexing !");
+    //println!("Finished Indexing !");
 
-    // TODO Should be added to ![cfg(test)] but doing here right now
-    dbg.print_with_data();
-    println!("Starting Unit test for color extraction");
-    let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
-    let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
-        Some(links) => links,
-        None => (std::usize::MAX, Dir::Right, false),
-    };
-    if nid == std::usize::MAX {
-        eprintln!("ERROR");
-    }
-    println!("Found Colors are");
-    println!("{:?}", dbg.get_node(nid).data());
+    //// TODO Should be added to ![cfg(test)] but doing here right now
+    //dbg.print_with_data();
+    //println!("Starting Unit test for color extraction");
+    //let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
+    //let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
+    //    Some(links) => links,
+    //    None => (std::usize::MAX, Dir::Right, false),
+    //};
+    //if nid == std::usize::MAX {
+    //    eprintln!("ERROR");
+    //}
+    //println!("Found Colors are");
+    //println!("{:?}", dbg.get_node(nid).data());
 }
 
 fn main() {

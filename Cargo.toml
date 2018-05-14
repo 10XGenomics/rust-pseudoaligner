@@ -7,6 +7,10 @@ authors = ["avi.srivastava <avi.srivastava@10xgenomics.com>"]
 debruijn = { path = "rust-debruijn" }
 bio = "*"
 clap = "~2.31"
+itertools = ">=0.6"
+pdqsort = "*"
+boomphf = { git = "https://github.com/10XGenomics/rust-boomphf", branch = "master"  }
+fxhash = "0.2.1"
 
 [profile.release]
 debug = true
