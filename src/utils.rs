@@ -10,10 +10,14 @@ use pdqsort;
 use boomphf;
 use std::str::FromStr;
 use bit_set::BitSet;
+use num_traits::ToPrimitive;
 use itertools::Itertools;
 use debruijn::{compression, filter};
 use debruijn::{Dir, Kmer, Exts, Vmer, Mer};
-use bio::data_structures::smallints::SmallInts;
+//use bio::data_structures::smallints::SmallInts;
+use smallvec::SmallVec;
+use smallvec::Array;
+use smallvec;
 
 // Extending trait CompressionSpec for compression
 pub struct ScmapCompress<D> {
@@ -58,10 +62,10 @@ impl<D> CountFilterSmallInt<D> {
 }
 
 
-impl filter::KmerSummarizer<usize, SmallInts<u8, usize>> for CountFilterSmallInt<usize> {
-    fn summarize<K, F: Iterator<Item = (K, Exts, usize)>>(&self, items: F) -> (bool, Exts, SmallInts<u8, usize>) {
+impl<D: Ord> filter::KmerSummarizer<D, SmallVec<[D; 4]>> for CountFilterSmallInt<D> {
+    fn summarize<K, F: Iterator<Item = (K, Exts, D)>>(&self, items: F) -> (bool, Exts, SmallVec<[D; 4]>) {
         let mut all_exts = Exts::empty();
-        let mut out_data: Vec<usize> = Vec::new();
+        let mut out_data = SmallVec::<[D; 4]>::new();
 
         let mut nobs = 0;
         for (_, exts, d) in items {
@@ -72,12 +76,7 @@ impl filter::KmerSummarizer<usize, SmallInts<u8, usize>> for CountFilterSmallInt
 
         out_data.sort();  out_data.dedup();
 
-        let mut deduplicated_data: SmallInts<u8, usize> = SmallInts::new();
-        for value in out_data{
-            deduplicated_data.push(value);
-        }
-
-        (nobs as usize >= self.min_kmer_obs, all_exts, deduplicated_data)
+        (nobs as usize >= self.min_kmer_obs, all_exts, out_data)
     }
 }
 
@@ -95,7 +94,7 @@ pub struct BoomHashMap<K: Clone + Hash + Debug, Exts, D> {
 /// To reduce memory consumption, set track_bcs to false to forget about BC lists.
 #[inline(never)]
 pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::KmerSummarizer<D1, DS>>(
-    seqs: Vec<V>,
+    seqs: Vec<(V, Exts, D1)>,
     summarizer: S,
     stranded: bool,
     report_all_kmers: bool,
@@ -107,13 +106,13 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
     // let mut all_kmers = Vec::new();
     let mut valid_kmers = Vec::new();
     let mut valid_exts = Vec::new();
-    // let mut valid_data = Vec::new();
+    let mut valid_data = Vec::new();
 
     let num_seqs: usize = seqs.len();
 
     // Estimate memory consumed by Kmer vectors, and set iteration count appropriately
     let input_kmers: usize = seqs.iter()
-        .map(|ref vmer| vmer.len().saturating_sub(K::k() - 1))
+        .map(|&(ref vmer, _, _)| vmer.len().saturating_sub(K::k() - 1))
         .sum();
     let kmer_mem = input_kmers * mem::size_of::<(K, D1)>();
     let max_mem = memory_size * (10 as usize).pow(9);
@@ -144,7 +143,7 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
             kmer_buckets.push(Vec::new());
         }
 
-        for seq in seqs {
+        for &(ref seq, seq_exts, ref d) in &seqs {
             for (kmer, exts) in seq.iter_kmer_exts(seq_exts) {
                 let (min_kmer, flip_exts) = if rc_norm {
                     let (min_kmer, flip) = kmer.min_rc_flip();
@@ -171,7 +170,7 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
                 if is_valid {
                     valid_kmers.push(kmer);
                     valid_exts.push(exts);
-                    // valid_data.push(summary_data);
+                    valid_data.push(summary_data);
                 }
             }
         }

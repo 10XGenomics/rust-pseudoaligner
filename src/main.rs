@@ -7,6 +7,8 @@ extern crate boomphf;
 extern crate fxhash;
 extern crate bit_set;
 extern crate heapsize;
+extern crate num_traits;
+extern crate smallvec;
 
 // helper functions for this project
 mod utils;
@@ -32,9 +34,10 @@ const REPORT_ALL_KMER: bool = false;
 
 fn read_fasta(reader: fasta::Reader<File>) -> () {
 
-    let summarizer = filter::CountFilterSet::new(MIN_KMERS);
+    let summarizer = utils::CountFilterSmallInt::new(MIN_KMERS);
+    //let summarizer = filter::CountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
-    let mut trancript_counter = 0;
+    let mut trancript_counter: u32 = 0;
 
     println!("Starting Reading the Fasta file");
     for result in reader.records() {
@@ -43,7 +46,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
         let dna_string = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
         // obtain sequence and push into the relevant vector
-        seqs.push(dna_string);
+        seqs.push((dna_string, Exts::empty(), trancript_counter));
 
         trancript_counter += 1;
         if trancript_counter % 10000 == 0 {
