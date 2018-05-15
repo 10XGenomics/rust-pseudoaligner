@@ -5,6 +5,8 @@ extern crate itertools;
 extern crate pdqsort;
 extern crate boomphf;
 extern crate fxhash;
+extern crate bit_set;
+extern crate heapsize;
 
 // helper functions for this project
 mod utils;
@@ -26,10 +28,11 @@ use debruijn::compression::{compress_kmers};
 pub type KmerType = kmer::Kmer32;
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
+const REPORT_ALL_KMER: bool = false;
 
 fn read_fasta(reader: fasta::Reader<File>) -> () {
 
-    //let summarizer = filter::CountFilterSet::new(MIN_KMERS);
+    let summarizer = filter::CountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
     let mut trancript_counter = 0;
 
@@ -40,7 +43,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
         let dna_string = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
         // obtain sequence and push into the relevant vector
-        seqs.push((dna_string, Exts::empty(), trancript_counter));
+        seqs.push(dna_string);
 
         trancript_counter += 1;
         if trancript_counter % 10000 == 0 {
@@ -53,8 +56,9 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     }
 
     println!("\nStarting kmer filtering");
-    let valid_kmers =
-        utils::kmerize::<KmerType, _, _,>(seqs);
+    //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
+    utils::filter_kmers_with_mphf::<KmerType, _, _, _, _>(seqs, summarizer, STRANDED,
+                                                          REPORT_ALL_KMER, 1);
 
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     //println!("Starting uncompressed de-bruijn graph construction");

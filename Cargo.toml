@@ -11,6 +11,8 @@ itertools = ">=0.6"
 pdqsort = "*"
 boomphf = { git = "https://github.com/10XGenomics/rust-boomphf", branch = "master"  }
 fxhash = "0.2.1"
+bit-set = "0.5.0"
+heapsize = "0.4.2"
 
 [profile.release]
 debug = true
