@@ -14,7 +14,7 @@ use graph::{DebruijnGraph, BaseGraph};
 use dna_string::DnaString;
 
 #[derive(Copy, Clone)]
-enum ExtMode<K: Kmer> {
+pub enum ExtMode<K: Kmer> {
     Unique(K, Dir, Exts),
     Terminal(Exts),
 }
@@ -64,13 +64,13 @@ where
 }
 
 /// Generate a compressed DeBruijn graph from a set of observed kmers
-pub struct CompressFromKmers<'a, K: 'a + Kmer, D: 'a, S: CompressionSpec<D>> {
-    pub stranded: bool,
-    pub k: PhantomData<K>,
-    pub d: PhantomData<D>,
-    pub spec: S,
-    pub available_kmers: BitSet,
-    pub kmer_exts: &'a Vec<(K, (Exts, D))>,
+struct CompressFromKmers<'a, K: 'a + Kmer, D: 'a, S: CompressionSpec<D>> {
+    stranded: bool,
+    k: PhantomData<K>,
+    d: PhantomData<D>,
+    spec: S,
+    available_kmers: BitSet,
+    kmer_exts: &'a Vec<(K, (Exts, D))>,
 }
 
 /// Compression of paths in Debruijn graph
@@ -192,7 +192,7 @@ impl<'a, K: Kmer, D: Clone + Debug, S: CompressionSpec<D>> CompressFromKmers<'a,
 
     /// Build the edge surrounding a kmer
     #[inline(never)]
-    pub fn build_node(
+    fn build_node(
         &mut self,
         seed: K,
         path: &mut Vec<(K, Dir)>,

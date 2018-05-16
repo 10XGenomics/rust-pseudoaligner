@@ -22,15 +22,15 @@ use std::io::Write;
 use clap::{Arg, App};
 use bio::io::fasta;
 
-use debruijn::{filter};
+//use debruijn::{filter};
 use debruijn::dna_string::*;
 use debruijn::{Dir, Kmer, Exts, kmer};
-use debruijn::compression::{compress_kmers};
+//use debruijn::compression::{compress_kmers};
 
 pub type KmerType = kmer::Kmer32;
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
-const REPORT_ALL_KMER: bool = false;
+//const REPORT_ALL_KMER: bool = false;
 
 fn read_fasta(reader: fasta::Reader<File>) -> () {
 
@@ -60,15 +60,15 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
 
     println!("\nStarting kmer filtering");
     let index: utils::BoomHashMap<KmerType, Exts, _> =
-        utils::filter_kmers_with_mphf::<KmerType, _, _, _, _>(seqs, summarizer, STRANDED,
-                                                              REPORT_ALL_KMER, 1);
+        utils::filter_kmers_with_mphf::<KmerType, _, _, _, _>(seqs, summarizer, STRANDED, 1);
+                                                              //REPORT_ALL_KMER, 1);
 
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     println!("Starting uncompressed de-bruijn graph construction");
 
     //println!("{:?}", valid_kmers);
 
-    let dbg = utils::compress_kmers_with_mphf(STRANDED, utils::ScmapCompress::new(), &index).finish();
+    let dbg = utils::compress_kmers_with_hash(STRANDED, utils::ScmapCompress::new(), &index).finish();
     println!("Done de-bruijn graph construction; ");
 
     let is_cmp = dbg.is_compressed();
@@ -79,19 +79,19 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
 
     println!("Finished Indexing !");
 
-    //// TODO Should be added to ![cfg(test)] but doing here right now
-    //dbg.print_with_data();
-    //println!("Starting Unit test for color extraction");
-    //let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
-    //let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
-    //    Some(links) => links,
-    //    None => (std::usize::MAX, Dir::Right, false),
-    //};
-    //if nid == std::usize::MAX {
-    //    eprintln!("ERROR");
-    //}
-    //println!("Found Colors are");
-    //println!("{:?}", dbg.get_node(nid).data());
+    // TODO Should be added to ![cfg(test)] but doing here right now
+    dbg.print_with_data();
+    println!("Starting Unit test for color extraction");
+    let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
+    let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
+        Some(links) => links,
+        None => (std::usize::MAX, Dir::Right, false),
+    };
+    if nid == std::usize::MAX {
+        eprintln!("ERROR");
+    }
+    println!("Found Colors are");
+    println!("{:?}", dbg.get_node(nid).data());
 }
 
 fn main() {
