@@ -59,25 +59,25 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     }
 
     println!("\nStarting kmer filtering");
-    //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
-    utils::filter_kmers_with_mphf::<KmerType, _, _, _, _>(seqs, summarizer, STRANDED,
-                                                          REPORT_ALL_KMER, 1);
+    let index: utils::BoomHashMap<KmerType, Exts, _> =
+        utils::filter_kmers_with_mphf::<KmerType, _, _, _, _>(seqs, summarizer, STRANDED,
+                                                              REPORT_ALL_KMER, 1);
 
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
-    //println!("Starting uncompressed de-bruijn graph construction");
+    println!("Starting uncompressed de-bruijn graph construction");
 
-    ////println!("{:?}", valid_kmers);
+    //println!("{:?}", valid_kmers);
 
-    //let dbg = compress_kmers(STRANDED, utils::ScmapCompress::new(), &valid_kmers).finish();
-    //println!("Done de-bruijn graph construction; ");
+    let dbg = utils::compress_kmers_with_mphf(STRANDED, utils::ScmapCompress::new(), &index).finish();
+    println!("Done de-bruijn graph construction; ");
 
-    //let is_cmp = dbg.is_compressed();
-    //if is_cmp.is_some() {
-    //    println!("not compressed: nodes: {:?}", is_cmp);
-    //    //dbg.print();
-    //}
+    let is_cmp = dbg.is_compressed();
+    if is_cmp.is_some() {
+        println!("not compressed: nodes: {:?}", is_cmp);
+        //dbg.print();
+    }
 
-    //println!("Finished Indexing !");
+    println!("Finished Indexing !");
 
     //// TODO Should be added to ![cfg(test)] but doing here right now
     //dbg.print_with_data();

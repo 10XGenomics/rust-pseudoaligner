@@ -5,6 +5,8 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::collections::{HashMap, HashSet};
 
+use std::collections::VecDeque;
+use debruijn::graph::{DebruijnGraph, BaseGraph};
 use heapsize::HeapSizeOf;
 use pdqsort;
 use boomphf;
@@ -18,34 +20,6 @@ use debruijn::{Dir, Kmer, Exts, Vmer, Mer};
 use smallvec::SmallVec;
 use smallvec::Array;
 use smallvec;
-
-// Extending trait CompressionSpec for compression
-pub struct ScmapCompress<D> {
-    d: PhantomData<D>,
-}
-
-impl<D> ScmapCompress<D> {
-    pub fn new() -> ScmapCompress<D> {
-        ScmapCompress {
-            d: PhantomData,
-        }
-    }
-}
-
-impl<D: PartialEq> compression::CompressionSpec<D> for ScmapCompress<D>
-where D: std::fmt::Debug
-{
-    fn reduce(&self, d: D, other: &D) -> D {
-        if d != *other {
-            panic!("{:?} != {:?}, Should not happen", d, *other);
-        }
-        d
-    }
-
-    fn join_test(&self, d1: &D, d2: &D) -> bool {
-        if d1 == d2 { true } else { false }
-    }
-}
 
 pub struct CountFilterSmallInt<D> {
     min_kmer_obs: usize,
@@ -99,7 +73,7 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
     stranded: bool,
     report_all_kmers: bool,
     memory_size: usize,
-){// -> BoomHashMap<K, Exts, DS> {
+) -> BoomHashMap<K, Exts, DS> {
 
     let rc_norm = !stranded;
 
@@ -191,10 +165,82 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
         valid_kmers.len()
     );
 
-    //BoomHashMap{
-    //    mph_hash: boomphf::Mphf::new(1.7, &valid_kmers, None),
-    //    keys: valid_kmers,
-    //    data: valid_data,
-    //    exts: valid_exts,
-    //}
+    BoomHashMap{
+        mph_hash: boomphf::Mphf::new(1.7, &valid_kmers, None),
+        keys: valid_kmers,
+        data: valid_data,
+        exts: valid_exts,
+    }
+}
+
+// Extending trait CompressionSpec for compression
+pub struct ScmapCompress<D> {
+    d: PhantomData<D>,
+}
+
+impl<D> ScmapCompress<D> {
+    pub fn new() -> ScmapCompress<D> {
+        ScmapCompress {
+            d: PhantomData,
+        }
+    }
+}
+
+impl<D: PartialEq> compression::CompressionSpec<D> for ScmapCompress<D>
+where D: std::fmt::Debug
+{
+    fn reduce(&self, d: D, other: &D) -> D {
+        if d != *other {
+            panic!("{:?} != {:?}, Should not happen", d, *other);
+        }
+        d
+    }
+
+    fn join_test(&self, d1: &D, d2: &D) -> bool {
+        if d1 == d2 { true } else { false }
+    }
+}
+
+/// Compress a set of kmers and their extensions and metadata into a base DeBruijn graph.
+#[inline(never)]
+pub fn compress_kmers_with_mphf<K: Kmer, D: Clone + Debug, S: compression::CompressionSpec<D>>(
+    stranded: bool,
+    spec: S,
+    index: &BoomHashMap<K, Exts, D>,
+) -> BaseGraph<K, D> {
+
+    let n_kmers = index.keys.len();
+    let mut available_kmers = BitSet::with_capacity(n_kmers);
+    for i in 0..n_kmers {
+        available_kmers.insert(i);
+    }
+
+    let mut comp = compression::CompressFromKmers {
+        stranded: stranded,
+        spec: spec,
+        k: PhantomData,
+        d: PhantomData,
+        available_kmers: available_kmers,
+        kmer_exts: &Vec::new(),
+    };
+
+    // Path-compressed De Bruijn graph will be created here
+    let mut graph = BaseGraph::new(stranded);
+
+    // Paths will be get assembled here
+    let mut path_buf = Vec::new();
+
+    // Node sequences will get assembled here
+    let mut edge_seq_buf = VecDeque::new();
+
+    for kmer_counter in 0..n_kmers {
+        let start_kmer = index.keys[kmer_counter].clone();
+        if comp.available_kmers.contains(kmer_counter) {
+            let (node_exts, node_data) =
+                comp.build_node_with_mphf(start_kmer, &mut path_buf, &mut edge_seq_buf);
+            graph.add(&edge_seq_buf, node_exts, node_data);
+        }
+    }
+
+    graph
 }
