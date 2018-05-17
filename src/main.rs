@@ -33,8 +33,8 @@ use debruijn::{Dir, Kmer, Exts, kmer, Vmer};
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
 pub type KmerType = kmer::Kmer32;
-pub type PrimDataTye = u32;
-pub type DataType = SmallVec<[PrimDataTye; 4]>;
+pub type PrimDataType = u32;
+pub type DataType = SmallVec<[PrimDataType; 4]>;
 //const REPORT_ALL_KMER: bool = false;
 
 fn read_fasta(reader: fasta::Reader<File>)
@@ -44,7 +44,7 @@ fn read_fasta(reader: fasta::Reader<File>)
     let summarizer = utils::CountFilterSmallInt::new(MIN_KMERS);
     //let summarizer = filter::CountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
-    let mut trancript_counter: PrimDataTye = 0;
+    let mut trancript_counter: PrimDataType = 0;
 
     println!("Starting Reading the Fasta file");
     for result in reader.records() {
@@ -110,29 +110,35 @@ fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
     for result in reader.records() {
         // obtain record or fail with error
         let record = result.unwrap();
-        println!("working on {:?}", record.id());
 
         let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
-        println!("graph base search");
-        for kmer in seqs.iter_kmers() {
-            let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
-                Some(links) => links,
-                None => (std::usize::MAX, Dir::Right, false),
-            };
-            if nid != std::usize::MAX {
-                println!("{:?}", dbg.get_node(nid).data());
-            }
-        }
+        //println!("graph base search");
+        //for kmer in seqs.iter_kmers() {
+        //    let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
+        //        Some(links) => links,
+        //        None => (std::usize::MAX, Dir::Right, false),
+        //    };
+        //    if nid != std::usize::MAX {
+        //        println!("{:?}", dbg.get_node(nid).data());
+        //    }
+        //}
 
+        let mut eq_class: Vec<PrimDataType> = Vec::new();
         println!("hash base search");
         for kmer in seqs.iter_kmers() {
             let maybe_pos = index.mphf.try_hash(&kmer);
             match maybe_pos {
-                Some(pos) => println!("{:?}", index.data[pos as usize]),
+                Some(pos) => {
+                    let labels = &index.data[pos as usize];
+                    eq_class.extend(labels.iter());
+                    pdqsort::sort(&mut eq_class);
+                    eq_class.dedup();
+                },
                 None => (),
             }
         }
+        println!("{:?} -> {:?}", record.id(), eq_class);
     }
 }
 
