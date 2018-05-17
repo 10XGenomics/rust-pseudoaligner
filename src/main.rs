@@ -20,24 +20,31 @@ use std::fs::File;
 use std::io::Write;
 
 use clap::{Arg, App};
-use bio::io::fasta;
+use utils::BoomHashMap;
+use smallvec::SmallVec;
+use bio::io::{fasta, fastq};
 
 //use debruijn::{filter};
 use debruijn::dna_string::*;
+use debruijn::graph::{DebruijnGraph};
 use debruijn::{Dir, Kmer, Exts, kmer};
 //use debruijn::compression::{compress_kmers};
 
-pub type KmerType = kmer::Kmer32;
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
+pub type KmerType = kmer::Kmer32;
+pub type PrimDataTye = u32;
+pub type DataType = SmallVec<[PrimDataTye; 4]>;
 //const REPORT_ALL_KMER: bool = false;
 
-fn read_fasta(reader: fasta::Reader<File>) -> () {
+fn read_fasta(reader: fasta::Reader<File>)
+              -> (DebruijnGraph<KmerType, DataType>,
+                  BoomHashMap<KmerType, Exts, DataType>) {
 
     let summarizer = utils::CountFilterSmallInt::new(MIN_KMERS);
     //let summarizer = filter::CountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
-    let mut trancript_counter: u32 = 0;
+    let mut trancript_counter: PrimDataTye = 0;
 
     println!("Starting Reading the Fasta file");
     for result in reader.records() {
@@ -59,6 +66,8 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     }
 
     println!("\nStarting kmer filtering");
+    //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
+    //    filter::filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED);
     let index: utils::BoomHashMap<KmerType, Exts, _> =
         utils::filter_kmers_with_mphf::<KmerType, _, _, _, _>(seqs, summarizer, STRANDED, 1);
                                                               //REPORT_ALL_KMER, 1);
@@ -66,7 +75,7 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     println!("Starting uncompressed de-bruijn graph construction");
 
-    //println!("{:?}", valid_kmers);
+    //println!("{:?}", index);
 
     let dbg = utils::compress_kmers_with_hash(STRANDED, utils::ScmapCompress::new(), &index).finish();
     println!("Done de-bruijn graph construction; ");
@@ -79,19 +88,32 @@ fn read_fasta(reader: fasta::Reader<File>) -> () {
 
     println!("Finished Indexing !");
 
-    // TODO Should be added to ![cfg(test)] but doing here right now
-    dbg.print_with_data();
-    println!("Starting Unit test for color extraction");
-    let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
-    let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
-        Some(links) => links,
-        None => (std::usize::MAX, Dir::Right, false),
-    };
-    if nid == std::usize::MAX {
-        eprintln!("ERROR");
+    (dbg, index)
+    //// TODO Should be added to ![cfg(test)] but doing here right now
+    ////dbg.print_with_data();
+    //println!("Starting Unit test for color extraction");
+    //let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
+    //let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
+    //    Some(links) => links,
+    //    None => (std::usize::MAX, Dir::Right, false),
+    //};
+    //if nid == std::usize::MAX {
+    //    eprintln!("ERROR");
+    //}
+    //println!("Found Colors are");
+    //println!("{:?}", dbg.get_node(nid).data());
+}
+
+fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
+                 dbg: DebruijnGraph<KmerType, DataType>, reader: fastq::Reader<File>){
+
+    for result in reader.records() {
+        // obtain record or fail with error
+        let record = result.unwrap();
+        println!("{:?}", record.seq());
+        println!("{:?}", record.qual());
+        println!("{:?}", record.id());
     }
-    println!("Found Colors are");
-    println!("{:?}", dbg.get_node(nid).data());
 }
 
 fn main() {
@@ -103,16 +125,27 @@ fn main() {
              .short("f")
              .long("fasta")
              .value_name("FILE")
-             .help("Genome Input file")
+             .help("Txome/Genome Input Fasta file")
+             .required(true))
+        .arg(Arg::with_name("reads")
+             .short("r")
+             .long("reads")
+             .value_name("FILE")
+             .help("Input Read Fastq file")
              .required(true))
         .get_matches();
 
     // Gets a value for config if supplied by user
     let fasta_file = matches.value_of("fasta").unwrap();
-    println!("Path for FASTA: {}", fasta_file);
+    println!("Path for reference FASTA: {}", fasta_file);
 
     // obtain reader or fail with error (via the unwrap method)
     let reader = fasta::Reader::from_file(fasta_file).unwrap();
 
-    read_fasta(reader);
+    let (dbg, index) = read_fasta(reader);
+    let reads_file = matches.value_of("reads").unwrap();
+    println!("\n\nPath for Reads FASTQ: {}", reads_file);
+
+    let reads = fastq::Reader::from_file(reads_file).unwrap();
+    process_reads(index, dbg, reads);
 }

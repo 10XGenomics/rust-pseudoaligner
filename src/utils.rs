@@ -1,7 +1,10 @@
 use std;
+use std::io;
 use std::mem;
+use std::io::Write;
 use std::hash::Hash;
 use std::fmt::Debug;
+use std::fmt::{self};
 use std::marker::PhantomData;
 use std::collections::VecDeque;
 
@@ -29,7 +32,7 @@ impl<D> CountFilterSmallInt<D> {
 }
 
 
-impl<D: Ord> filter::KmerSummarizer<D, SmallVec<[D; 4]>> for CountFilterSmallInt<D> {
+impl<D: Ord+Debug> filter::KmerSummarizer<D, SmallVec<[D; 4]>> for CountFilterSmallInt<D> {
     fn summarize<K, F: Iterator<Item = (K, Exts, D)>>(&self, items: F) -> (bool, Exts, SmallVec<[D; 4]>) {
         let mut all_exts = Exts::empty();
         let mut out_data = SmallVec::<[D; 4]>::new();
@@ -50,10 +53,46 @@ impl<D: Ord> filter::KmerSummarizer<D, SmallVec<[D; 4]>> for CountFilterSmallInt
 
 // Minimal perfect hash
 pub struct BoomHashMap<K: Clone + Hash + Debug, Exts, D> {
-    mph_hash: boomphf::Mphf<K>,
+    mphf: boomphf::Mphf<K>,
     keys: Vec<K>,
     exts: Vec<Exts>,
     data: Vec<D>
+}
+impl<K, Exts, D> BoomHashMap<K, Exts, D>
+where K: Clone + Hash + Debug, D: Debug, Exts: Debug {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Kmer {{ id: {:?}, Exts: {:?}, Data: {:?} }} \n Lengths {}, {}, {}",
+            self.keys,
+            self.exts,
+            self.data,
+            self.keys.len(),
+            self.exts.len(),
+            self.data.len()
+        )
+    }
+
+    fn new(mut keys_: Vec<K>, mut exts_: Vec<Exts>, mut data_: Vec<D> ) -> BoomHashMap<K, Exts, D> {
+        let mphf_ = boomphf::Mphf::new(1.7, &keys_, None);
+        // trick taken from :
+        // https://github.com/10XDev/cellranger/blob/master/lib/rust/detect_chemistry/src/index.rs#L123
+        for i in 0 .. keys_.len() {
+            loop {
+                let kmer_slot = mphf_.hash(&keys_[i]) as usize;
+                if i == kmer_slot { break; }
+                keys_.swap(i, kmer_slot);
+                exts_.swap(i, kmer_slot);
+                data_.swap(i, kmer_slot);
+            }
+        }
+        BoomHashMap{
+            mphf: mphf_,
+            keys: keys_,
+            exts: exts_,
+            data: data_,
+        }
+    }
 }
 
 /// Read a shard and determine the valid kmers
@@ -66,7 +105,8 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
     stranded: bool,
     //report_all_kmers: bool,
     memory_size: usize,
-) -> BoomHashMap<K, Exts, DS> {
+) -> BoomHashMap<K, Exts, DS>
+where DS: std::fmt::Debug{
 
     let rc_norm = !stranded;
 
@@ -96,16 +136,21 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
 
     if bucket_ranges.len() > 1 {
         println!(
-            "filter_kmers: {} sequences, {} kmers, {} passes",
+            "\nfilter_kmers: {} sequences, {} kmers, {} passes",
             num_seqs,
             input_kmers,
             bucket_ranges.len()
         );
     }
 
+    let mut pass_counter = 0;
     for bucket_range in bucket_ranges {
 
         let mut kmer_buckets: Vec<Vec<(K, Exts, D1)>> = Vec::new();
+        pass_counter += 1;
+        print!("\r Performing {} pass", pass_counter);
+        io::stdout().flush().ok().expect("Could not flush stdout");
+
         for _ in 0..256 {
             kmer_buckets.push(Vec::new());
         }
@@ -129,6 +174,7 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
 
         // info!("Validating kmers...");
         for mut kmer_vec in kmer_buckets {
+
             pdqsort::sort_by_key(&mut kmer_vec, |elt| elt.0);
 
             for (kmer, kmer_obs_iter) in &kmer_vec.into_iter().group_by(|elt| elt.0) {
@@ -151,19 +197,14 @@ pub fn filter_kmers_with_mphf<K: Kmer, V: Vmer<K>, D1: Clone, DS, S: filter::Kme
     //}
 
     println!(
-        "filter kmers: sequences: {}, kmers: {}, unique kmers: {}",
+        "\nfilter kmers: sequences: {}, kmers: {}, unique kmers: {}",
         num_seqs,
         input_kmers,
         // all_kmers.len(),
         valid_kmers.len()
     );
 
-    BoomHashMap{
-        mph_hash: boomphf::Mphf::new(1.7, &valid_kmers, None),
-        keys: valid_kmers,
-        data: valid_data,
-        exts: valid_exts,
-    }
+    BoomHashMap::new(valid_kmers, valid_exts, valid_data)
 }
 
 // Extending trait CompressionSpec for compression
@@ -219,7 +260,7 @@ impl<'a, K: Kmer, D: Clone + Debug, S: compression::CompressionSpec<D>> Compress
     }
 
     fn get_kmer_id(&self, kmer: &K) -> Result<usize, usize> {
-        self.index.mph_hash.try_hash(kmer).map_or(None, |v| Some(v as usize)).ok_or_else(|| 0 as usize)
+        self.index.mphf.try_hash(kmer).map_or(None, |v| Some(v as usize)).ok_or_else(|| 0 as usize)
     }
 
     /// Attempt to extend kmer v in direction dir. Return:
