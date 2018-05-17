@@ -107,9 +107,11 @@ fn read_fasta(reader: fasta::Reader<File>)
 fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
                  dbg: DebruijnGraph<KmerType, DataType>, reader: fastq::Reader<File>){
 
+    let mut reads_counter = 0;
     for result in reader.records() {
         // obtain record or fail with error
         let record = result.unwrap();
+        reads_counter += 1;
 
         let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
@@ -125,7 +127,6 @@ fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
         //}
 
         let mut eq_class: Vec<PrimDataType> = Vec::new();
-        println!("hash base search");
         for kmer in seqs.iter_kmers() {
             let maybe_pos = index.mphf.try_hash(&kmer);
             match maybe_pos {
@@ -138,7 +139,12 @@ fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
                 None => (),
             }
         }
-        println!("{:?} -> {:?}", record.id(), eq_class);
+
+        if reads_counter % 100000 == 0 {
+            print!("\rDone Mapping {} reads", reads_counter);
+            io::stdout().flush().ok().expect("Could not flush stdout");
+        }
+        //println!("{:?} -> {:?}", record.id(), eq_class);
     }
 }
 
