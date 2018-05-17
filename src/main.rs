@@ -27,7 +27,7 @@ use bio::io::{fasta, fastq};
 //use debruijn::{filter};
 use debruijn::dna_string::*;
 use debruijn::graph::{DebruijnGraph};
-use debruijn::{Dir, Kmer, Exts, kmer};
+use debruijn::{Dir, Kmer, Exts, kmer, Vmer};
 //use debruijn::compression::{compress_kmers};
 
 const MIN_KMERS: usize = 1;
@@ -110,9 +110,29 @@ fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
     for result in reader.records() {
         // obtain record or fail with error
         let record = result.unwrap();
-        println!("{:?}", record.seq());
-        println!("{:?}", record.qual());
-        println!("{:?}", record.id());
+        println!("working on {:?}", record.id());
+
+        let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
+
+        println!("graph base search");
+        for kmer in seqs.iter_kmers() {
+            let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
+                Some(links) => links,
+                None => (std::usize::MAX, Dir::Right, false),
+            };
+            if nid != std::usize::MAX {
+                println!("{:?}", dbg.get_node(nid).data());
+            }
+        }
+
+        println!("hash base search");
+        for kmer in seqs.iter_kmers() {
+            let maybe_pos = index.mphf.try_hash(&kmer);
+            match maybe_pos {
+                Some(pos) => println!("{:?}", index.data[pos as usize]),
+                None => (),
+            }
+        }
     }
 }
 

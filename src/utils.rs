@@ -53,10 +53,10 @@ impl<D: Ord+Debug> filter::KmerSummarizer<D, SmallVec<[D; 4]>> for CountFilterSm
 
 // Minimal perfect hash
 pub struct BoomHashMap<K: Clone + Hash + Debug, Exts, D> {
-    mphf: boomphf::Mphf<K>,
+    pub mphf: boomphf::Mphf<K>,
     keys: Vec<K>,
     exts: Vec<Exts>,
-    data: Vec<D>
+    pub data: Vec<D>
 }
 impl<K, Exts, D> BoomHashMap<K, Exts, D>
 where K: Clone + Hash + Debug, D: Debug, Exts: Debug {
