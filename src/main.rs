@@ -10,9 +10,6 @@ extern crate heapsize;
 extern crate num_traits;
 extern crate smallvec;
 
-// helper functions for this project
-mod utils;
-
 // Import some modules
 use std::io;
 use std::str;
@@ -20,28 +17,27 @@ use std::fs::File;
 use std::io::Write;
 
 use clap::{Arg, App};
-use utils::BoomHashMap;
 use smallvec::SmallVec;
 use bio::io::{fasta, fastq};
 
-//use debruijn::{filter};
 use debruijn::dna_string::*;
+use debruijn::filter::filter_kmers;
 use debruijn::graph::{DebruijnGraph};
 use debruijn::{Dir, Kmer, Exts, kmer, Vmer};
-//use debruijn::compression::{compress_kmers};
+use debruijn::compression::compress_kmers_with_hash;
 
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
 pub type KmerType = kmer::Kmer32;
 pub type PrimDataType = u32;
 pub type DataType = SmallVec<[PrimDataType; 4]>;
-//const REPORT_ALL_KMER: bool = false;
+const REPORT_ALL_KMER: bool = false;
 
 fn read_fasta(reader: fasta::Reader<File>)
               -> (DebruijnGraph<KmerType, DataType>,
-                  BoomHashMap<KmerType, Exts, DataType>) {
+                  boomphf::BoomHashMap2<KmerType, Exts, DataType>) {
 
-    let summarizer = utils::CountFilterSmallInt::new(MIN_KMERS);
+    let summarizer = debruijn::filter::CountFilterSmallInt::new(MIN_KMERS);
     //let summarizer = filter::CountFilterSet::new(MIN_KMERS);
     let mut seqs = Vec::new();
     let mut trancript_counter: PrimDataType = 0;
@@ -68,16 +64,16 @@ fn read_fasta(reader: fasta::Reader<File>)
     println!("\nStarting kmer filtering");
     //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
     //    filter::filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED);
-    let index: utils::BoomHashMap<KmerType, Exts, _> =
-        utils::filter_kmers_with_mphf::<KmerType, _, _, _, _>(seqs, summarizer, STRANDED, 1);
-                                                              //REPORT_ALL_KMER, 1);
+    let (index, _) : (boomphf::BoomHashMap2<KmerType, Exts, _>, _) =
+        filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED,
+                                             REPORT_ALL_KMER, 1);
 
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     println!("Starting uncompressed de-bruijn graph construction");
 
     //println!("{:?}", index);
 
-    let dbg = utils::compress_kmers_with_hash(STRANDED, utils::ScmapCompress::new(), &index).finish();
+    let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(), &index).finish();
     println!("Done de-bruijn graph construction; ");
 
     let is_cmp = dbg.is_compressed();
@@ -104,7 +100,7 @@ fn read_fasta(reader: fasta::Reader<File>)
     //println!("{:?}", dbg.get_node(nid).data());
 }
 
-fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
+fn process_reads(index: boomphf::BoomHashMap2<KmerType, Exts, DataType>,
                  dbg: DebruijnGraph<KmerType, DataType>, reader: fastq::Reader<File>){
 
     let mut reads_counter = 0;
@@ -128,11 +124,10 @@ fn process_reads(index: utils::BoomHashMap<KmerType, Exts, DataType>,
 
         let mut eq_class: Vec<PrimDataType> = Vec::new();
         for kmer in seqs.iter_kmers() {
-            let maybe_pos = index.mphf.try_hash(&kmer);
-            match maybe_pos {
-                Some(pos) => {
-                    let labels = &index.data[pos as usize];
-                    eq_class.extend(labels.iter());
+            let maybe_data = index.get_data_for_kmer(&kmer);
+            match maybe_data {
+                Some((_, ref labels)) => {
+                    eq_class.extend(labels.clone().iter());
                     pdqsort::sort(&mut eq_class);
                     eq_class.dedup();
                 },
