@@ -4,10 +4,6 @@ extern crate clap;
 extern crate itertools;
 extern crate pdqsort;
 extern crate boomphf;
-extern crate fxhash;
-extern crate bit_set;
-extern crate heapsize;
-extern crate num_traits;
 extern crate smallvec;
 
 // Import some modules
@@ -111,19 +107,18 @@ fn process_reads(index: boomphf::BoomHashMap2<KmerType, Exts, DataType>,
 
         let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
-        //println!("graph base search");
-        //for kmer in seqs.iter_kmers() {
-        //    let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
-        //        Some(links) => links,
-        //        None => (std::usize::MAX, Dir::Right, false),
-        //    };
-        //    if nid != std::usize::MAX {
-        //        println!("{:?}", dbg.get_node(nid).data());
-        //    }
-        //}
-
         let mut eq_class: Vec<PrimDataType> = Vec::new();
         for kmer in seqs.iter_kmers() {
+            //let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
+            //    Some(links) => links,
+            //    None => (std::usize::MAX, Dir::Right, false),
+            //};
+            //if nid != std::usize::MAX {
+            //    let labels = dbg.get_node(nid).data();
+            //    eq_class.extend(labels.clone().iter());
+            //    pdqsort::sort(&mut eq_class);
+            //    eq_class.dedup();
+            //}
             let maybe_data = index.get_data_for_kmer(&kmer);
             match maybe_data {
                 Some((_, ref labels)) => {
