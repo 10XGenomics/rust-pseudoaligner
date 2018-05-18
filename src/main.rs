@@ -119,7 +119,7 @@ fn process_reads(index: boomphf::BoomHashMap2<KmerType, Exts, DataType>,
             //    pdqsort::sort(&mut eq_class);
             //    eq_class.dedup();
             //}
-            let maybe_data = index.get_data_for_kmer(&kmer);
+            let maybe_data = index.get(&kmer);
             match maybe_data {
                 Some((_, ref labels)) => {
                     eq_class.extend(labels.clone().iter());
