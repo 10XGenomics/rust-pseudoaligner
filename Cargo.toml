@@ -9,8 +9,10 @@ bio = "*"
 clap = "~2.31"
 itertools = ">=0.6"
 pdqsort = "*"
-boomphf = { git = "https://github.com/10XGenomics/rust-boomphf", branch = "master" }
+boomphf = { path = "../../rust-boomphf" }  #git = "https://github.com/10XGenomics/rust-boomphf", branch = "master" }
 smallvec = "0.6.1"
+log = "0.4.1"
+pretty_env_logger = "0.2.3"
 
 [profile.release]
 debug = true

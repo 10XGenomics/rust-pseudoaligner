@@ -5,6 +5,8 @@ extern crate itertools;
 extern crate pdqsort;
 extern crate boomphf;
 extern crate smallvec;
+extern crate pretty_env_logger;
+#[macro_use] extern crate log;
 
 // Import some modules
 use std::io;
@@ -24,10 +26,12 @@ use debruijn::compression::compress_kmers_with_hash;
 
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
-pub type KmerType = kmer::Kmer32;
-pub type PrimDataType = u32;
-pub type DataType = SmallVec<[PrimDataType; 4]>;
+const MEM_SIZE: usize = 1;
 const REPORT_ALL_KMER: bool = false;
+pub type PrimDataType = u32;
+pub type KmerType = kmer::Kmer32;
+pub type DataType = SmallVec<[PrimDataType; 4]>;
+
 
 fn read_fasta(reader: fasta::Reader<File>)
               -> (DebruijnGraph<KmerType, DataType>,
@@ -38,7 +42,7 @@ fn read_fasta(reader: fasta::Reader<File>)
     let mut seqs = Vec::new();
     let mut trancript_counter: PrimDataType = 0;
 
-    println!("Starting Reading the Fasta file");
+    info!("Starting Reading the Fasta file\n");
     for result in reader.records() {
         // obtain record or fail with error
         let record = result.unwrap();
@@ -49,36 +53,37 @@ fn read_fasta(reader: fasta::Reader<File>)
 
         trancript_counter += 1;
         if trancript_counter % 10000 == 0 {
-            print!("\r Done Reading {} transcripts", trancript_counter);
+            eprint!("\r Done Reading {} sequences", trancript_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
         // looking for two transcripts
         // println!("{:?}", record.id());
         // if trancript_counter == 2 { break; }
     }
+    eprintln!("");
 
-    println!("\nStarting kmer filtering");
+    info!("Starting kmer filtering");
     //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
     //    filter::filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED);
     let (index, _) : (boomphf::BoomHashMap2<KmerType, Exts, _>, _) =
         filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED,
-                                             REPORT_ALL_KMER, 1);
+                                             REPORT_ALL_KMER, MEM_SIZE);
 
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
-    println!("Starting uncompressed de-bruijn graph construction");
+    info!("Starting uncompressed de-bruijn graph construction");
 
     //println!("{:?}", index);
 
     let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(), &index).finish();
-    println!("Done de-bruijn graph construction; ");
+    info!("Done de-bruijn graph construction; ");
 
     let is_cmp = dbg.is_compressed();
     if is_cmp.is_some() {
-        println!("not compressed: nodes: {:?}", is_cmp);
+        warn!("not compressed: nodes: {:?}", is_cmp);
         //dbg.print();
     }
 
-    println!("Finished Indexing !");
+    info!("Finished Indexing !");
 
     (dbg, index)
     //// TODO Should be added to ![cfg(test)] but doing here right now
@@ -97,7 +102,8 @@ fn read_fasta(reader: fasta::Reader<File>)
 }
 
 fn process_reads(index: boomphf::BoomHashMap2<KmerType, Exts, DataType>,
-                 dbg: DebruijnGraph<KmerType, DataType>, reader: fastq::Reader<File>){
+                 dbg: DebruijnGraph<KmerType, DataType>,
+                 reader: fastq::Reader<File>){
 
     let mut reads_counter = 0;
     for result in reader.records() {
@@ -156,17 +162,18 @@ fn main() {
              .help("Input Read Fastq file")
              .required(true))
         .get_matches();
+    pretty_env_logger::init();
 
     // Gets a value for config if supplied by user
     let fasta_file = matches.value_of("fasta").unwrap();
-    println!("Path for reference FASTA: {}", fasta_file);
+    info!("Path for reference FASTA: {}", fasta_file);
 
     // obtain reader or fail with error (via the unwrap method)
     let reader = fasta::Reader::from_file(fasta_file).unwrap();
 
     let (dbg, index) = read_fasta(reader);
     let reads_file = matches.value_of("reads").unwrap();
-    println!("\n\nPath for Reads FASTQ: {}", reads_file);
+    info!("Path for Reads FASTQ: {}\n\n", reads_file);
 
     let reads = fastq::Reader::from_file(reads_file).unwrap();
     process_reads(index, dbg, reads);
