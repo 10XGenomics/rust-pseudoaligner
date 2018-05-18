@@ -4,12 +4,12 @@ version = "0.1.0"
 authors = ["avi.srivastava <avi.srivastava@10xgenomics.com>"]
 
 [dependencies]
-debruijn = { path = "../../rust-debruijn" }
+debruijn = { git = "https://github.com/k3yavi/rust-debruijn", branch = "master"  }
 bio = "*"
 clap = "~2.31"
 itertools = ">=0.6"
 pdqsort = "*"
-boomphf = { path = "../../rust-boomphf"  }
+boomphf = { git = "https://github.com/k3yavi/rust-boomphf", branch = "master"  }
 fxhash = "0.2.1"
 bit-set = "0.4.0"
 heapsize = "0.4.2"
