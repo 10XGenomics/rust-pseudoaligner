@@ -23,8 +23,6 @@ use std::io;
 use std::str;
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
-use std::convert::AsRef;
 
 use clap::{Arg, App};
 use smallvec::SmallVec;
@@ -46,8 +44,7 @@ pub type DataType = SmallVec<[PrimDataType; 4]>;
 
 
 fn read_fasta(reader: fasta::Reader<File>)
-              -> (DebruijnGraph<KmerType, DataType>,
-                  boomphf::BoomHashMap2<KmerType, Exts, DataType>) {
+              -> utils::Index<KmerType, Exts, DataType> {
 
     let summarizer = debruijn::filter::CountFilterSmallInt::new(MIN_KMERS);
     //let summarizer = filter::CountFilterSet::new(MIN_KMERS);
@@ -77,16 +74,16 @@ fn read_fasta(reader: fasta::Reader<File>)
     info!("Starting kmer filtering");
     //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
     //    filter::filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED);
-    let (index, _) : (boomphf::BoomHashMap2<KmerType, Exts, _>, _) =
+    let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, _>, _) =
         filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED,
                                              REPORT_ALL_KMER, MEM_SIZE);
 
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     info!("Starting uncompressed de-bruijn graph construction");
 
-    //println!("{:?}", index);
+    //println!("{:?}", phf);
 
-    let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(), &index).finish();
+    let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(), &phf).finish();
     info!("Done de-bruijn graph construction; ");
 
     let is_cmp = dbg.is_compressed();
@@ -97,7 +94,7 @@ fn read_fasta(reader: fasta::Reader<File>)
 
     info!("Finished Indexing !");
 
-    (dbg, index)
+    utils::Index::new(dbg, phf)
     //// TODO Should be added to ![cfg(test)] but doing here right now
     ////dbg.print_with_data();
     //println!("Starting Unit test for color extraction");
@@ -113,8 +110,8 @@ fn read_fasta(reader: fasta::Reader<File>)
     //println!("{:?}", dbg.get_node(nid).data());
 }
 
-fn process_reads(index: boomphf::BoomHashMap2<KmerType, Exts, DataType>,
-                 dbg: DebruijnGraph<KmerType, DataType>,
+fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, DataType>,
+                 dbg: &DebruijnGraph<KmerType, DataType>,
                  reader: fastq::Reader<File>){
 
     let mut reads_counter = 0;
@@ -137,7 +134,7 @@ fn process_reads(index: boomphf::BoomHashMap2<KmerType, Exts, DataType>,
             //    pdqsort::sort(&mut eq_class);
             //    eq_class.dedup();
             //}
-            let maybe_data = index.get(&kmer);
+            let maybe_data = phf.get(&kmer);
             match maybe_data {
                 Some((_, ref labels)) => {
                     eq_class.extend(labels.clone().iter());
@@ -192,22 +189,28 @@ fn main() {
     let fasta_file = matches.value_of("fasta").unwrap();
     info!("Path for reference FASTA: {}", fasta_file);
 
-    let mut dbg: DebruijnGraph<KmerType, DataType>;
-    let mut index: boomphf::BoomHashMap2<KmerType, Exts, DataType>;
+    let ref_index: utils::Index<KmerType, Exts, DataType>;
 
     // obtain reader or fail with error (via the unwrap method)
-    let index_file = matches.values_of("index").unwrap().collect();
-    if matches.is_present("make") {
-        let input_dump = utils::read_obj(index_file);
-        match input_dump {
-            Ok((dbg, index)) => (),
-            Err(error) => (),
-        }
+    let index_file = matches.values_of("index").unwrap().next().unwrap();
+
+    if ! matches.is_present("make") {
+        // import the index if already present.
+        info!("Reading index from File: {:?}", index_file);
+        let input_dump: Result<utils::Index<KmerType, Exts, DataType>,
+                               Box<bincode::ErrorKind>> =
+            utils::read_obj(index_file);
+
+        ref_index = input_dump.expect("Can't read the index");
     }
     else{
+        warn!("Creating the index, can take little time.");
+        // if index not found then create a new one
         let reader = fasta::Reader::from_file(fasta_file).unwrap();
-        let output_dump = &index;
-        utils::write_obj(output_dump, index_file);
+        ref_index = read_fasta(reader);
+
+        info!("Dumping index into File: {:?}", index_file);
+        utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
     }
 
     // obtain reader or fail with error (via the unwrap method)
@@ -215,5 +218,5 @@ fn main() {
     info!("Path for Reads FASTQ: {}\n\n", reads_file);
 
     let reads = fastq::Reader::from_file(reads_file).unwrap();
-    process_reads(index, dbg, reads);
+    process_reads(ref_index.get_phf(), ref_index.get_dbg(), reads);
 }

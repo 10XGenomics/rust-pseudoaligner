@@ -9,14 +9,21 @@ bio = "*"
 clap = "~2.31"
 itertools = ">=0.6"
 pdqsort = "*"
-boomphf = { path = "../../rust-boomphf" }  #git = "https://github.com/10XGenomics/rust-boomphf", branch = "master" }
-smallvec = "0.6.1"
+#boomphf = { path = "../../rust-boomphf" }  #git = "https://github.com/10XGenomics/rust-boomphf", branch = "master" }
 log = "0.4.1"
 pretty_env_logger = "0.2.3"
 bincode = "1.0.0"
 flate2 = "1.0.1"
 serde = "1.0.50"
 failure = "0.1.1"
+
+[dependencies.boomphf]
+path = "../../rust-boomphf"
+features = ["serde"]
+
+[dependencies.smallvec]
+version = "0.6.1"
+features = ["serde"]
 
 [profile.release]
 debug = true
