@@ -6,13 +6,25 @@ extern crate pdqsort;
 extern crate boomphf;
 extern crate smallvec;
 extern crate pretty_env_logger;
-#[macro_use] extern crate log;
+extern crate bincode;
+extern crate flate2;
+extern crate failure;
+
+#[macro_use]
+extern crate log;
+
+#[macro_use]
+extern crate serde;
+
+mod utils;
 
 // Import some modules
 use std::io;
 use std::str;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
+use std::convert::AsRef;
 
 use clap::{Arg, App};
 use smallvec::SmallVec;
@@ -137,11 +149,12 @@ fn process_reads(index: boomphf::BoomHashMap2<KmerType, Exts, DataType>,
         }
 
         if reads_counter % 100000 == 0 {
-            print!("\rDone Mapping {} reads", reads_counter);
+            eprint!("\rDone Mapping {} reads", reads_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
         //println!("{:?} -> {:?}", record.id(), eq_class);
     }
+    eprintln!();
 }
 
 fn main() {
@@ -161,6 +174,17 @@ fn main() {
              .value_name("FILE")
              .help("Input Read Fastq file")
              .required(true))
+        .arg(Arg::with_name("index")
+             .short("i")
+             .long("index")
+             .value_name("FILE")
+             .help("Index of the reference")
+             .required(true))
+        .arg(Arg::with_name("make")
+             .help("tells to make the index")
+             .short("m")
+             .long("make")
+             .requires("index"))
         .get_matches();
     pretty_env_logger::init();
 
@@ -168,10 +192,25 @@ fn main() {
     let fasta_file = matches.value_of("fasta").unwrap();
     info!("Path for reference FASTA: {}", fasta_file);
 
-    // obtain reader or fail with error (via the unwrap method)
-    let reader = fasta::Reader::from_file(fasta_file).unwrap();
+    let mut dbg: DebruijnGraph<KmerType, DataType>;
+    let mut index: boomphf::BoomHashMap2<KmerType, Exts, DataType>;
 
-    let (dbg, index) = read_fasta(reader);
+    // obtain reader or fail with error (via the unwrap method)
+    let index_file = matches.values_of("index").unwrap().collect();
+    if matches.is_present("make") {
+        let input_dump = utils::read_obj(index_file);
+        match input_dump {
+            Ok((dbg, index)) => (),
+            Err(error) => (),
+        }
+    }
+    else{
+        let reader = fasta::Reader::from_file(fasta_file).unwrap();
+        let output_dump = &index;
+        utils::write_obj(output_dump, index_file);
+    }
+
+    // obtain reader or fail with error (via the unwrap method)
     let reads_file = matches.value_of("reads").unwrap();
     info!("Path for Reads FASTQ: {}\n\n", reads_file);
 
