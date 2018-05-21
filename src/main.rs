@@ -4,11 +4,13 @@ extern crate clap;
 extern crate itertools;
 extern crate pdqsort;
 extern crate boomphf;
-extern crate smallvec;
 extern crate pretty_env_logger;
 extern crate bincode;
 extern crate flate2;
 extern crate failure;
+
+#[macro_use]
+extern crate smallvec;
 
 #[macro_use]
 extern crate log;
@@ -31,7 +33,7 @@ use bio::io::{fasta, fastq};
 use debruijn::dna_string::*;
 use debruijn::filter::filter_kmers;
 use debruijn::graph::{DebruijnGraph};
-use debruijn::{Dir, Kmer, Exts, kmer, Vmer};
+use debruijn::{Exts, kmer, Vmer};
 use debruijn::compression::compress_kmers_with_hash;
 
 const MIN_KMERS: usize = 1;
@@ -95,19 +97,6 @@ fn read_fasta(reader: fasta::Reader<File>)
     info!("Finished Indexing !");
 
     utils::Index::new(dbg, phf)
-    //// TODO Should be added to ![cfg(test)] but doing here right now
-    ////dbg.print_with_data();
-    //println!("Starting Unit test for color extraction");
-    //let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
-    //let (nid, _, _) = match dbg.find_link(test_kmer, Dir::Right){
-    //    Some(links) => links,
-    //    None => (std::usize::MAX, Dir::Right, false),
-    //};
-    //if nid == std::usize::MAX {
-    //    eprintln!("ERROR");
-    //}
-    //println!("Found Colors are");
-    //println!("{:?}", dbg.get_node(nid).data());
 }
 
 fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, DataType>,
@@ -219,4 +208,43 @@ fn main() {
 
     let reads = fastq::Reader::from_file(reads_file).unwrap();
     process_reads(ref_index.get_phf(), ref_index.get_dbg(), reads);
+}
+
+#[cfg(test)]
+mod tests{
+    use std;
+    use utils;
+    use bincode;
+    use smallvec::SmallVec;
+    use debruijn::{Dir, Kmer, Exts, kmer};
+
+    pub type PrimDataType = u32;
+    pub type KmerType = kmer::Kmer32;
+    pub type DataType = SmallVec<[PrimDataType; 4]>;
+
+
+    #[test]
+    fn test_kmer_search() {
+        let index_file = "/mnt/home/avi.srivastava/rust_avi/rust-utils-10x/sc_mapping/unit_test/test.small.index";
+        println!("Reading index from File: {:?}", index_file);
+        let input_dump: Result<utils::Index<KmerType, Exts, DataType>,
+                               Box<bincode::ErrorKind>> =
+            utils::read_obj(index_file);
+
+        let ref_index = input_dump.expect("Can't read the index");
+
+        println!("Starting Unit test for color extraction");
+        let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
+        let (nid, _, _) = match ref_index.get_dbg().find_link(test_kmer, Dir::Right){
+            Some(links) => links,
+            None => (std::usize::MAX, Dir::Right, false),
+        };
+        if nid == std::usize::MAX {
+            eprintln!("ERROR");
+        }
+        println!("Found Colors are");
+        let color = ref_index.get_dbg().get_node(nid).data();
+        let oracle: SmallVec<[u32; 4]> = smallvec![0, 1];
+        assert_eq!(oracle, *color);
+    }
 }
