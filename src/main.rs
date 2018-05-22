@@ -48,7 +48,7 @@ pub type DataType = PrimDataType;
 fn read_fasta(reader: fasta::Reader<File>)
               -> utils::Index<KmerType, Exts, DataType> {
 
-    let summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
+    let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
     let mut seqs = Vec::new();
     let mut trancript_counter: PrimDataType = 0;
 
@@ -76,7 +76,7 @@ fn read_fasta(reader: fasta::Reader<File>)
     //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
     //    filter::filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED);
     let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, _>, _) =
-        filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED,
+        filter_kmers::<KmerType, _, _, _, _>(&seqs, &mut summarizer, STRANDED,
                                              REPORT_ALL_KMER, MEM_SIZE);
 
     //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
@@ -95,52 +95,52 @@ fn read_fasta(reader: fasta::Reader<File>)
 
     info!("Finished Indexing !");
 
-    utils::Index::new(dbg, phf)
+    utils::Index::new(dbg, phf, summarizer.get_eq_classes())
 }
 
-//fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, DataType>,
-//                 dbg: &DebruijnGraph<KmerType, DataType>,
-//                 reader: fastq::Reader<File>){
-//
-//    let mut reads_counter = 0;
-//    for result in reader.records() {
-//        // obtain record or fail with error
-//        let record = result.unwrap();
-//        reads_counter += 1;
-//
-//        let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
-//
-//        let mut eq_class: Vec<PrimDataType> = Vec::new();
-//        for kmer in seqs.iter_kmers() {
-//            //let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
-//            //    Some(links) => links,
-//            //    None => (std::usize::MAX, Dir::Right, false),
-//            //};
-//            //if nid != std::usize::MAX {
-//            //    let labels = dbg.get_node(nid).data();
-//            //    eq_class.extend(labels.clone().iter());
-//            //    pdqsort::sort(&mut eq_class);
-//            //    eq_class.dedup();
-//            //}
-//            let maybe_data = phf.get(&kmer);
-//            match maybe_data {
-//                Some((_, ref labels)) => {
-//                    eq_class.extend(labels.clone().iter());
-//                    pdqsort::sort(&mut eq_class);
-//                    eq_class.dedup();
-//                },
-//                None => (),
-//            }
-//        }
-//
-//        if reads_counter % 100000 == 0 {
-//            eprint!("\rDone Mapping {} reads", reads_counter);
-//            io::stdout().flush().ok().expect("Could not flush stdout");
-//        }
-//        //println!("{:?} -> {:?}", record.id(), eq_class);
-//    }
-//    eprintln!();
-//}
+fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, DataType>,
+                 //dbg: &DebruijnGraph<KmerType, DataType>,
+                 reader: fastq::Reader<File>){
+
+    let mut reads_counter = 0;
+    for result in reader.records() {
+        // obtain record or fail with error
+        let record = result.unwrap();
+        reads_counter += 1;
+
+        let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
+
+        let mut eq_class: Vec<PrimDataType> = Vec::new();
+        for kmer in seqs.iter_kmers() {
+            //let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
+            //    Some(links) => links,
+            //    None => (std::usize::MAX, Dir::Right, false),
+            //};
+            //if nid != std::usize::MAX {
+            //    let labels = dbg.get_node(nid).data();
+            //    eq_class.extend(labels.clone().iter());
+            //    pdqsort::sort(&mut eq_class);
+            //    eq_class.dedup();
+            //}
+            let maybe_data = phf.get(&kmer);
+            match maybe_data {
+                Some((_, ref labels)) => {
+                    eq_class.push(*labels.clone());
+                    pdqsort::sort(&mut eq_class);
+                    eq_class.dedup();
+                },
+                None => (),
+            }
+        }
+
+        if reads_counter % 100000 == 0 {
+            eprint!("\rDone Mapping {} reads", reads_counter);
+            io::stdout().flush().ok().expect("Could not flush stdout");
+        }
+        //println!("{:?} -> {:?}", record.id(), eq_class);
+    }
+    eprintln!();
+}
 
 fn main() {
     let matches = App::new("De-bruijn-mapping")
@@ -203,8 +203,8 @@ fn main() {
         let reads_file = matches.value_of("reads").unwrap();
         info!("Path for Reads FASTQ: {}\n\n", reads_file);
 
-        //let reads = fastq::Reader::from_file(reads_file).unwrap();
-        process_reads(ref_index.get_phf(), ref_index.get_dbg(), reads);
+        let reads = fastq::Reader::from_file(reads_file).unwrap();
+        process_reads(ref_index.get_phf(), /*ref_index.get_dbg(),*/ reads);
 
     }
     info!("Finished Processing !")
