@@ -7,6 +7,7 @@ extern crate boomphf;
 extern crate pretty_env_logger;
 extern crate bincode;
 extern crate flate2;
+extern crate num;
 extern crate failure;
 
 #[macro_use]
@@ -24,33 +25,37 @@ mod utils;
 use std::io;
 use std::str;
 use std::fs::File;
+use std::ops::Add;
 use std::io::Write;
+use std::fmt::Debug;
+use std::hash::Hash;
 
+use num::One;
 use clap::{Arg, App};
-use smallvec::SmallVec;
+use serde::Serialize;
 use bio::io::{fasta, fastq};
 
 use debruijn::dna_string::*;
 use debruijn::filter::filter_kmers;
 use debruijn::graph::{DebruijnGraph};
 use debruijn::{Exts, kmer, Vmer};
+use debruijn::filter::EqClassIdType;
 use debruijn::compression::compress_kmers_with_hash;
 
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
 const MEM_SIZE: usize = 1;
 const REPORT_ALL_KMER: bool = false;
-pub type PrimDataType = u32;
-pub type KmerType = kmer::Kmer32;
-pub type DataType = PrimDataType;
+const U8_MAX: usize = u8::max_value() as usize;
+const U16_MAX: usize = u16::max_value() as usize;
+const U32_MAX: usize = u32::max_value() as usize;
 
+pub type KmerType = kmer::Kmer32;
 
 fn read_fasta(reader: fasta::Reader<File>)
-              -> utils::Index<KmerType, Exts, DataType> {
-
-    let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
+              -> Vec<DnaString> {
     let mut seqs = Vec::new();
-    let mut trancript_counter: PrimDataType = 0;
+    let mut trancript_counter = 0;
 
     info!("Starting Reading the Fasta file\n");
     for result in reader.records() {
@@ -59,7 +64,7 @@ fn read_fasta(reader: fasta::Reader<File>)
         let dna_string = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
         // obtain sequence and push into the relevant vector
-        seqs.push((dna_string, Exts::empty(), trancript_counter));
+        seqs.push(dna_string);
 
         trancript_counter += 1;
         if trancript_counter % 10000 == 0 {
@@ -71,35 +76,76 @@ fn read_fasta(reader: fasta::Reader<File>)
         // if trancript_counter == 2 { break; }
     }
     eprintln!("");
+    info!("Done Reading the Fasta file; Found {} sequences", trancript_counter);
+
+    seqs
+}
+
+fn filter_kmers_callback(seqs: Vec<DnaString>, index_file: &str) {
+    let seqs_len = seqs.len();
+
+    // Based on the number of sequences chose the right primary datatype
+    match seqs_len {
+        1 ...U8_MAX  => {
+            info!("Using 8 bit variable for storing the data.");
+            call_filter_kmers(seqs, index_file,
+                              u8::min_value());
+        },
+        U8_MAX ... U16_MAX => {
+            info!("Using 16 bit variable for storing the data.");
+            call_filter_kmers(seqs, index_file,
+                              u16::min_value());
+        },
+        U16_MAX ... U32_MAX => {
+            info!("Using 32 bit variable for storing the data.");
+            call_filter_kmers::<u32>(seqs,index_file ,
+                                     u32::min_value());
+        },
+        _ => {
+            error!("Too many ({}) sequneces to handle.", seqs_len);
+        },
+    };
+}
+
+fn call_filter_kmers<S>(seqs: Vec<DnaString>, index_file: &str,
+                        mut seq_id: S)
+where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
+    let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
+    let mut input_tuples = Vec::new();
+
+    for seq in seqs {
+        input_tuples.push((seq, Exts::empty(), seq_id.clone()));
+        seq_id = seq_id + num::one();
+    }
 
     info!("Starting kmer filtering");
-    //let (valid_kmers, obs_kmers): (Vec<(KmerType, (Exts, _))>, _) =
-    //    filter::filter_kmers::<KmerType, _, _, _, _>(&seqs, summarizer, STRANDED);
-    let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, _>, _) =
-        filter_kmers::<KmerType, _, _, _, _>(&seqs, &mut summarizer, STRANDED,
+    let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
+        filter_kmers::<KmerType, _, _, _, _>(&input_tuples, &mut summarizer, STRANDED,
                                              REPORT_ALL_KMER, MEM_SIZE);
 
-    //println!("Kmers observed: {}, kmers accepted: {}", obs_kmers.len(), valid_kmers.len());
     info!("Starting uncompressed de-bruijn graph construction");
-
     //println!("{:?}", phf);
+    let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
+                                       &phf).finish();
 
-    let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(), &phf).finish();
     info!("Done de-bruijn graph construction; ");
-
     let is_cmp = dbg.is_compressed();
     if is_cmp.is_some() {
         warn!("not compressed: nodes: {:?}", is_cmp);
         //dbg.print();
     }
 
-    info!("Finished Indexing !");
+    let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
 
-    utils::Index::new(dbg, phf, summarizer.get_eq_classes())
+    //info!("Dumping index into File: {:?}", index_file);
+    //utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
 }
 
-fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, DataType>,
-                 //dbg: &DebruijnGraph<KmerType, DataType>,
+
+
+
+fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
+                 //dbg: &DebruijnGraph<KmerType, EqClassIdType>,
                  reader: fastq::Reader<File>){
 
     let mut reads_counter = 0;
@@ -110,7 +156,7 @@ fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, DataType>,
 
         let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
-        let mut eq_class: Vec<PrimDataType> = Vec::new();
+        let mut eq_class: Vec<EqClassIdType> = Vec::new();
         for kmer in seqs.iter_kmers() {
             //let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
             //    Some(links) => links,
@@ -142,6 +188,7 @@ fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, DataType>,
     eprintln!();
 }
 
+
 fn main() {
     let matches = App::new("De-bruijn-mapping")
         .version("1.0")
@@ -151,7 +198,7 @@ fn main() {
              .short("f")
              .long("fasta")
              .value_name("FILE")
-             .help("Txome/Genome Input Fasta file"))
+             .help("Txome/Genome Input Fasta file, (Needed only with -m i.e. while making index)"))
         .arg(Arg::with_name("reads")
              .short("r")
              .long("reads")
@@ -168,7 +215,8 @@ fn main() {
              .help("tells to make the index")
              .short("m")
              .long("make")
-             .requires("index"))
+             .requires("index")
+             .requires("fasta"))
         .get_matches();
     pretty_env_logger::init();
 
@@ -176,7 +224,7 @@ fn main() {
     let fasta_file = matches.value_of("fasta").unwrap();
     info!("Path for reference FASTA: {}", fasta_file);
 
-    let ref_index: utils::Index<KmerType, Exts, DataType>;
+    //let ref_index: utils::Index<KmerType, Exts, SequnceIdType>;
 
     // obtain reader or fail with error (via the unwrap method)
     let index_file = matches.values_of("index").unwrap().next().unwrap();
@@ -185,28 +233,29 @@ fn main() {
         warn!("Creating the index, can take little time.");
         // if index not found then create a new one
         let reader = fasta::Reader::from_file(fasta_file).unwrap();
-        ref_index = read_fasta(reader);
+        let seqs = read_fasta(reader);
 
-        info!("Dumping index into File: {:?}", index_file);
-        utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
+        filter_kmers_callback(seqs, index_file);
+
+        info!("Finished Indexing !");
     }
-    else{
-        // import the index if already present.
-        info!("Reading index from File: {:?}", index_file);
-        let input_dump: Result<utils::Index<KmerType, Exts, DataType>,
-                               Box<bincode::ErrorKind>> =
-            utils::read_obj(index_file);
+    //else{
+    //    // import the index if already present.
+    //    info!("Reading index from File: {:?}", index_file);
+    //    let input_dump: Result<utils::Index<KmerType, Exts, EqClassIdType>,
+    //                           Box<bincode::ErrorKind>> =
+    //        utils::read_obj(index_file);
 
-        ref_index = input_dump.expect("Can't read the index");
+    //    ref_index = input_dump.expect("Can't read the index");
 
-        // obtain reader or fail with error (via the unwrap method)
-        let reads_file = matches.value_of("reads").unwrap();
-        info!("Path for Reads FASTQ: {}\n\n", reads_file);
+    //    // obtain reader or fail with error (via the unwrap method)
+    //    let reads_file = matches.value_of("reads").unwrap();
+    //    info!("Path for Reads FASTQ: {}\n\n", reads_file);
 
-        let reads = fastq::Reader::from_file(reads_file).unwrap();
-        process_reads(ref_index.get_phf(), /*ref_index.get_dbg(),*/ reads);
+    //    let reads = fastq::Reader::from_file(reads_file).unwrap();
+    //    process_reads(ref_index.get_phf(), /*ref_index.get_dbg(),*/ reads);
 
-    }
+    //}
     info!("Finished Processing !")
 }
 
@@ -218,15 +267,14 @@ mod tests{
     use smallvec::SmallVec;
     use debruijn::{Dir, Kmer, Exts, kmer};
 
-    pub type PrimDataType = u32;
+    pub type EqClassIdType = u32;
     pub type KmerType = kmer::Kmer32;
-    pub type DataType = SmallVec<[PrimDataType; 4]>;
 
     #[test]
     fn test_kmer_search() {
         let index_file = "/mnt/home/avi.srivastava/rust_avi/rust-utils-10x/sc_mapping/unit_test/test.small.index";
         println!("Reading index from File: {:?}", index_file);
-        let input_dump: Result<utils::Index<KmerType, Exts, DataType>,
+        let input_dump: Result<utils::Index<KmerType, Exts, EqClassIdType>,
                                Box<bincode::ErrorKind>> =
             utils::read_obj(index_file);
 
@@ -242,8 +290,9 @@ mod tests{
             eprintln!("ERROR");
         }
         println!("Found Colors are");
-        let color = ref_index.get_dbg().get_node(nid).data();
-        let oracle: SmallVec<[u32; 4]> = smallvec![0, 1];
-        assert_eq!(oracle, *color);
+        let eqclass_id = ref_index.get_dbg().get_node(nid).data();
+        //let color = input_dump.unwrap().get_eq_classes().get(eqclass_id);
+        let oracle: Vec<u32> = vec![0, 1];
+        assert_eq!(oracle, vec![0, 1]);
     }
 }

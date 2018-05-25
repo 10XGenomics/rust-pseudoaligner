@@ -18,6 +18,7 @@ use boomphf;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 use debruijn::graph::DebruijnGraph;
+use debruijn::filter::EqClassIdType;
 use bincode::{serialize_into, deserialize_from};
 
 use failure::Error;
@@ -25,33 +26,44 @@ use flate2::read::MultiGzDecoder;
 
 #[derive(Serialize, Deserialize)]
 pub struct Index<K, E, D>
-where K:Hash, D: Eq + Hash{
-    dbg: DebruijnGraph<K, D>,
-    phf: boomphf::BoomHashMap2<K, E, D>,
-    eqclasses: HashMap<Vec<D>, D>,
+where K:Hash, D: Eq + Hash {
+    dbg: DebruijnGraph<K, EqClassIdType>,
+    phf: boomphf::BoomHashMap2<K, E, EqClassIdType>,
+    eqclasses: Vec<Vec<D>>,
 }
 
-impl<K:Hash, E, D> Index<K, E, D> 
-where K:Hash, D: Eq + Hash{
-    pub fn new(dbg: DebruijnGraph<K, D>,
-               phf: boomphf::BoomHashMap2<K, E, D>,
-               eqclasses: HashMap<Vec<D>, D>) -> Index<K, E, D>{
+impl<K:Hash, E, D> Index<K, E, D>
+where K:Hash, D: Clone + Debug + Eq + Hash {
+    pub fn new(dbg: DebruijnGraph<K, EqClassIdType>,
+               phf: boomphf::BoomHashMap2<K, E, EqClassIdType>,
+               eqclasses: HashMap<Vec<D>, EqClassIdType>) -> Index<K, E, D>{
+
+        let hash_len = eqclasses.len();
+        let mut eqclasses_vec: Vec<Vec<D>> = Vec::new();
+        eqclasses_vec.resize(hash_len, Vec::<D>::new());
+
+        // fill in eqclasses into vector
+        for (eqclass, index) in eqclasses.into_iter() {
+            eqclasses_vec[index as usize] = eqclass;
+        }
+        info!("Found {} Equivalence classes", eqclasses_vec.len());
+
         Index{
             dbg: dbg,
             phf: phf,
-            eqclasses: eqclasses,
+            eqclasses: eqclasses_vec,
         }
     }
 
-    pub fn get_phf(&self) -> &boomphf::BoomHashMap2<K, E, D>{
+    pub fn get_phf(&self) -> &boomphf::BoomHashMap2<K, E, EqClassIdType>{
         &self.phf
     }
 
-    pub fn get_dbg(&self) -> &DebruijnGraph<K, D>{
+    pub fn get_dbg(&self) -> &DebruijnGraph<K, EqClassIdType>{
         &self.dbg
     }
 
-    pub fn get_eq_classes(&self) -> &HashMap<Vec<D>, D>{
+    pub fn get_eq_classes(&self) -> &Vec<Vec<D>>{
         &self.eqclasses
     }
 }
