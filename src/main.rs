@@ -137,16 +137,18 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
 
     let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
 
-    //info!("Dumping index into File: {:?}", index_file);
-    //utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
+    info!("Dumping index into File: {:?}", index_file);
+    utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
 }
 
 
 
 
-fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
-                 //dbg: &DebruijnGraph<KmerType, EqClassIdType>,
-                 reader: fastq::Reader<File>){
+fn process_reads<S>(phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
+                    //dbg: &DebruijnGraph<KmerType, EqClassIdType>,
+                    eq_classes: &Vec<Vec<S>>,
+                    reader: fastq::Reader<File>)
+where S: Clone + Ord + PartialEq + Debug {
 
     let mut reads_counter = 0;
     for result in reader.records() {
@@ -156,7 +158,7 @@ fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
 
         let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
 
-        let mut eq_class: Vec<EqClassIdType> = Vec::new();
+        let mut eq_class: Vec<S> = Vec::new();
         for kmer in seqs.iter_kmers() {
             //let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
             //    Some(links) => links,
@@ -170,13 +172,15 @@ fn process_reads(phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
             //}
             let maybe_data = phf.get(&kmer);
             match maybe_data {
-                Some((_, ref labels)) => {
-                    eq_class.push(*labels.clone());
+                Some((_, color)) => {
+                    let labels = eq_classes[*color as usize].clone();
+                    eq_class.extend(labels) ;
                     pdqsort::sort(&mut eq_class);
                     eq_class.dedup();
                 },
                 None => (),
             }
+            println!("{:?}", eq_class);
         }
 
         if reads_counter % 100000 == 0 {
@@ -224,8 +228,6 @@ fn main() {
     let fasta_file = matches.value_of("fasta").unwrap();
     info!("Path for reference FASTA: {}", fasta_file);
 
-    //let ref_index: utils::Index<KmerType, Exts, SequnceIdType>;
-
     // obtain reader or fail with error (via the unwrap method)
     let index_file = matches.values_of("index").unwrap().next().unwrap();
 
@@ -239,23 +241,28 @@ fn main() {
 
         info!("Finished Indexing !");
     }
-    //else{
-    //    // import the index if already present.
-    //    info!("Reading index from File: {:?}", index_file);
-    //    let input_dump: Result<utils::Index<KmerType, Exts, EqClassIdType>,
-    //                           Box<bincode::ErrorKind>> =
-    //        utils::read_obj(index_file);
+    else{
+        // import the index if already present.
+        info!("Reading index from File: {:?}", index_file);
+        // TODO: use the right variable type for index, currently hardcoded
+        warn!("INDEX TYPE HARDCODED TO u32");
+        let input_dump: Result<utils::Index<KmerType, Exts, u32>,
+                               Box<bincode::ErrorKind>> =
+            utils::read_obj(index_file);
 
-    //    ref_index = input_dump.expect("Can't read the index");
+        let ref_index = input_dump.expect("Can't read the index");
 
-    //    // obtain reader or fail with error (via the unwrap method)
-    //    let reads_file = matches.value_of("reads").unwrap();
-    //    info!("Path for Reads FASTQ: {}\n\n", reads_file);
+        // obtain reader or fail with error (via the unwrap method)
+        let reads_file = matches.value_of("reads").unwrap();
+        info!("Path for Reads FASTQ: {}\n\n", reads_file);
 
-    //    let reads = fastq::Reader::from_file(reads_file).unwrap();
-    //    process_reads(ref_index.get_phf(), /*ref_index.get_dbg(),*/ reads);
+        let reads = fastq::Reader::from_file(reads_file).unwrap();
+        process_reads(ref_index.get_phf(),
+                      /*ref_index.get_dbg(),*/
+                      ref_index.get_eq_classes(),
+                      reads);
 
-    //}
+    }
     info!("Finished Processing !")
 }
 
@@ -267,14 +274,13 @@ mod tests{
     use smallvec::SmallVec;
     use debruijn::{Dir, Kmer, Exts, kmer};
 
-    pub type EqClassIdType = u32;
     pub type KmerType = kmer::Kmer32;
 
     #[test]
     fn test_kmer_search() {
         let index_file = "/mnt/home/avi.srivastava/rust_avi/rust-utils-10x/sc_mapping/unit_test/test.small.index";
         println!("Reading index from File: {:?}", index_file);
-        let input_dump: Result<utils::Index<KmerType, Exts, EqClassIdType>,
+        let input_dump: Result<utils::Index<KmerType, Exts, u8>,
                                Box<bincode::ErrorKind>> =
             utils::read_obj(index_file);
 
@@ -291,8 +297,8 @@ mod tests{
         }
         println!("Found Colors are");
         let eqclass_id = ref_index.get_dbg().get_node(nid).data();
-        //let color = input_dump.unwrap().get_eq_classes().get(eqclass_id);
-        let oracle: Vec<u32> = vec![0, 1];
-        assert_eq!(oracle, vec![0, 1]);
+        let eq_classes = ref_index.get_eq_classes();
+        let labels = eq_classes[*eqclass_id as usize].clone();
+        assert_eq!(labels, vec![0, 1]);
     }
 }
