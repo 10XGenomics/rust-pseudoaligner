@@ -29,6 +29,7 @@ use std::ops::Add;
 use std::io::Write;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::collections::HashMap;
 
 use num::One;
 use clap::{Arg, App};
@@ -40,6 +41,7 @@ use debruijn::filter::filter_kmers;
 use debruijn::graph::{DebruijnGraph};
 use debruijn::{Exts, kmer, Vmer};
 use debruijn::filter::EqClassIdType;
+use debruijn::msp::{simple_scan, MspInterval, msp_sequence};
 use debruijn::compression::compress_kmers_with_hash;
 
 const MIN_KMERS: usize = 1;
@@ -53,7 +55,7 @@ const U32_MAX: usize = u32::max_value() as usize;
 pub type KmerType = kmer::Kmer32;
 
 fn read_fasta(reader: fasta::Reader<File>)
-              -> Vec<DnaString> {
+              -> Vec<Vec<DnaString>> {
     let mut seqs = Vec::new();
     let mut trancript_counter = 0;
 
@@ -61,13 +63,13 @@ fn read_fasta(reader: fasta::Reader<File>)
     for result in reader.records() {
         // obtain record or fail with error
         let record = result.unwrap();
-        let dna_string = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
+        let dna_string = DnaString::from_dna_only_string( str::from_utf8(record.seq()).unwrap() );
 
         // obtain sequence and push into the relevant vector
         seqs.push(dna_string);
 
         trancript_counter += 1;
-        if trancript_counter % 10000 == 0 {
+        if trancript_counter % 100 == 0 {
             eprint!("\r Done Reading {} sequences", trancript_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
@@ -81,7 +83,7 @@ fn read_fasta(reader: fasta::Reader<File>)
     seqs
 }
 
-fn filter_kmers_callback(seqs: Vec<DnaString>, index_file: &str) {
+fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str) {
     let seqs_len = seqs.len();
 
     // Based on the number of sequences chose the right primary datatype
@@ -107,38 +109,77 @@ fn filter_kmers_callback(seqs: Vec<DnaString>, index_file: &str) {
     };
 }
 
-fn call_filter_kmers<S>(seqs: Vec<DnaString>, index_file: &str,
+fn call_filter_kmers<S>(seqs: Vec<Vec<DnaString>>, index_file: &str,
                         mut seq_id: S)
 where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
     let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
-    let mut input_tuples = Vec::new();
 
-    for seq in seqs {
-        input_tuples.push((seq, Exts::empty(), seq_id.clone()));
+    // TODO: Divergence for MSP
+    //let mut input_tuples = Vec::new();
+    //for seq in seqs {
+    //    input_tuples.push((seq, Exts::empty(), seq_id.clone()));
+    //    seq_id = seq_id + num::one();
+    //}
+
+    let mut transcript_counter = 0;
+    let mut bucket: Vec<Vec<(DnaString, Exts, S)>> = vec![Vec::new(); 1024];
+
+    for seq_vec in seqs {
+        for seq in seq_vec {
+            if seq.len() <= 32 {
+                // Most Probably between two `N`.
+                continue;
+            }
+            let msps = msp_sequence::<kmer::Kmer5, DnaString>( 32, &seq.to_bytes()[..],
+                                                               None,
+                                                               true );
+            for msp in msps{
+                let bucket_id = msp.0;
+                let bucket_exts = msp.1;
+                let bucket_seqs = msp.2;
+
+                if bucket_id > bucket.len() as u32{
+                    panic!("Small bucket size");
+                }
+                bucket[bucket_id as usize].push((bucket_seqs, bucket_exts, seq_id.clone()));
+            }
+        }
+
         seq_id = seq_id + num::one();
+        transcript_counter += 1;
+        //if transcript_counter % 10 == 0 {
+        eprint!("\r Done Reading {} sequences", transcript_counter);
+        io::stdout().flush().ok().expect("Could not flush stdout");
+        //}
     }
 
-    info!("Starting kmer filtering");
-    let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
-        filter_kmers::<KmerType, _, _, _, _>(&input_tuples, &mut summarizer, STRANDED,
-                                             REPORT_ALL_KMER, MEM_SIZE);
+    transcript_counter = 0;
+    for bucket_data in bucket {
+        //info!("Starting kmer filtering for {:?}", bucket_id);
+        let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
+            filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,
+                                                 REPORT_ALL_KMER, MEM_SIZE);
+        transcript_counter += 1;
+        eprint!("\r Done Reading {} sequences", transcript_counter);
+        io::stdout().flush().ok().expect("Could not flush stdout");
 
-    info!("Starting uncompressed de-bruijn graph construction");
-    //println!("{:?}", phf);
-    let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
-                                       &phf).finish();
-
-    info!("Done de-bruijn graph construction; ");
-    let is_cmp = dbg.is_compressed();
-    if is_cmp.is_some() {
-        warn!("not compressed: nodes: {:?}", is_cmp);
-        //dbg.print();
+        info!("Starting uncompressed de-bruijn graph construction");
+        //println!("{:?}", phf);
+        let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
+                                           &phf).finish();
     }
 
-    let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
+    //info!("Done de-bruijn graph construction; ");
+    //let is_cmp = dbg.is_compressed();
+    //if is_cmp.is_some() {
+    //    warn!("not compressed: nodes: {:?}", is_cmp);
+    //    //dbg.print();
+    //}
 
-    info!("Dumping index into File: {:?}", index_file);
-    utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
+    //let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
+
+    //info!("Dumping index into File: {:?}", index_file);
+    //utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
 }
 
 
