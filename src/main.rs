@@ -20,6 +20,7 @@ extern crate log;
 extern crate serde;
 
 mod utils;
+mod docks;
 
 // Import some modules
 use std::io;
@@ -70,12 +71,14 @@ fn read_fasta(reader: fasta::Reader<File>)
 
         trancript_counter += 1;
         if trancript_counter % 100 == 0 {
-            eprint!("\r Done Reading {} sequences", trancript_counter);
+            print!("\r Done Reading {} sequences", trancript_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
         // looking for two transcripts
         // println!("{:?}", record.id());
         // if trancript_counter == 2 { break; }
+        //warn!("Reading only one Chromosome");
+        //break;
     }
     eprintln!("");
     info!("Done Reading the Fasta file; Found {} sequences", trancript_counter);
@@ -83,7 +86,8 @@ fn read_fasta(reader: fasta::Reader<File>)
     seqs
 }
 
-fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str) {
+fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
+                         uhs: docks::DocksUhs) {
     let seqs_len = seqs.len();
 
     // Based on the number of sequences chose the right primary datatype
@@ -91,17 +95,20 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str) {
         1 ...U8_MAX  => {
             info!("Using 8 bit variable for storing the data.");
             call_filter_kmers(seqs, index_file,
-                              u8::min_value());
+                              u8::min_value(),
+                              uhs);
         },
         U8_MAX ... U16_MAX => {
             info!("Using 16 bit variable for storing the data.");
             call_filter_kmers(seqs, index_file,
-                              u16::min_value());
+                              u16::min_value(),
+                              uhs);
         },
         U16_MAX ... U32_MAX => {
             info!("Using 32 bit variable for storing the data.");
             call_filter_kmers::<u32>(seqs,index_file ,
-                                     u32::min_value());
+                                     u32::min_value(),
+                                     uhs);
         },
         _ => {
             error!("Too many ({}) sequneces to handle.", seqs_len);
@@ -110,7 +117,7 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str) {
 }
 
 fn call_filter_kmers<S>(seqs: Vec<Vec<DnaString>>, index_file: &str,
-                        mut seq_id: S)
+                        mut seq_id: S, uhs: docks::DocksUhs)
 where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
     let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
 
@@ -122,23 +129,22 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
     //}
 
     let mut transcript_counter = 0;
-    let mut bucket: Vec<Vec<(DnaString, Exts, S)>> = vec![Vec::new(); 1024];
+    let mut bucket: Vec<Vec<(DnaString, Exts, S)>> = vec![Vec::new(); uhs.len()];
+    let seqs_len = seqs.len();
 
-    for seq_vec in seqs {
-        for seq in seq_vec {
-            if seq.len() <= 32 {
-                // Most Probably between two `N`.
-                continue;
-            }
-            let msps = msp_sequence::<kmer::Kmer5, DnaString>( 32, &seq.to_bytes()[..],
-                                                               None,
-                                                               true );
+    warn!("Using kmer8 for minimizers ");
+    for contigs in seqs {
+        // One FASTA entry possibly broken into multiple contigs
+        // based on the location of `N` int he sequence.
+        for seq in contigs {
+            let msps = docks::msp_sequence( seq, &uhs );
+
             for msp in msps{
                 let bucket_id = msp.0;
                 let bucket_exts = msp.1;
                 let bucket_seqs = msp.2;
 
-                if bucket_id > bucket.len() as u32{
+                if bucket_id > bucket.len() as u16{
                     panic!("Small bucket size");
                 }
                 bucket[bucket_id as usize].push((bucket_seqs, bucket_exts, seq_id.clone()));
@@ -148,28 +154,31 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
         seq_id = seq_id + num::one();
         transcript_counter += 1;
         //if transcript_counter % 10 == 0 {
-        eprint!("\r Done Reading {} sequences", transcript_counter);
+        print!("\r Done Bucketing {}% of the reference sequences", transcript_counter*100/seqs_len);
         io::stdout().flush().ok().expect("Could not flush stdout");
         //}
     }
+    eprintln!();
 
     transcript_counter = 0;
     for bucket_data in bucket {
-        //info!("Starting kmer filtering for {:?}", bucket_id);
-        let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
-            filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,
-                                                 REPORT_ALL_KMER, MEM_SIZE);
-        transcript_counter += 1;
-        eprint!("\r Done Reading {} sequences", transcript_counter);
-        io::stdout().flush().ok().expect("Could not flush stdout");
+        if bucket_data.len() > 0 {
+            //info!("Starting kmer filtering for {:?}", bucket_id);
+            let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
+                filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,
+                                                     REPORT_ALL_KMER, MEM_SIZE);
+            transcript_counter += 1;
+            print!("\r Done Analyzing {}% buckets", transcript_counter*100/uhs.len());
+            io::stdout().flush().ok().expect("Could not flush stdout");
 
-        info!("Starting uncompressed de-bruijn graph construction");
-        //println!("{:?}", phf);
-        let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
-                                           &phf).finish();
+            //info!("Starting uncompressed de-bruijn graph construction");
+            //println!("{:?}", phf);
+            let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
+                                               &phf).finish();
+        }
     }
 
-    //info!("Done de-bruijn graph construction; ");
+    info!("Done de-bruijn graph construction; ");
     //let is_cmp = dbg.is_compressed();
     //if is_cmp.is_some() {
     //    warn!("not compressed: nodes: {:?}", is_cmp);
@@ -225,12 +234,12 @@ where S: Clone + Ord + PartialEq + Debug {
         }
 
         if reads_counter % 100000 == 0 {
-            eprint!("\rDone Mapping {} reads", reads_counter);
+            print!("\rDone Mapping {} reads", reads_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
         //println!("{:?} -> {:?}", record.id(), eq_class);
     }
-    eprintln!();
+    println!();
 }
 
 
@@ -274,11 +283,14 @@ fn main() {
 
     if matches.is_present("make") {
         warn!("Creating the index, can take little time.");
+        let uhs = docks::read_uhs("res_8_40_4_0.txt".to_string());
+
         // if index not found then create a new one
         let reader = fasta::Reader::from_file(fasta_file).unwrap();
         let seqs = read_fasta(reader);
 
-        filter_kmers_callback(seqs, index_file);
+        //Set up the filter_kmer call based on the number of sequences.
+        filter_kmers_callback(seqs, index_file, uhs);
 
         info!("Finished Indexing !");
     }
