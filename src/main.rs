@@ -9,7 +9,6 @@ extern crate bincode;
 extern crate flate2;
 extern crate num;
 extern crate failure;
-extern crate rand;
 
 #[macro_use]
 extern crate smallvec;
@@ -33,6 +32,9 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::collections::HashMap;
 
+use std::thread;
+use std::sync::mpsc;
+
 use num::One;
 use clap::{Arg, App};
 use serde::Serialize;
@@ -43,7 +45,7 @@ use debruijn::filter::filter_kmers;
 use debruijn::graph::{DebruijnGraph};
 use debruijn::{Exts, kmer, Vmer};
 use debruijn::filter::EqClassIdType;
-use debruijn::msp::{simple_scan, MspInterval, msp_sequence};
+use debruijn::msp::{simple_scan, MspInterval};
 use debruijn::compression::compress_kmers_with_hash;
 
 const MIN_KMERS: usize = 1;
@@ -59,7 +61,7 @@ pub type KmerType = kmer::Kmer32;
 fn read_fasta(reader: fasta::Reader<File>)
               -> Vec<Vec<DnaString>> {
     let mut seqs = Vec::new();
-    let mut trancript_counter = 0;
+    let mut transcript_counter = 0;
 
     info!("Starting Reading the Fasta file\n");
     for result in reader.records() {
@@ -70,19 +72,19 @@ fn read_fasta(reader: fasta::Reader<File>)
         // obtain sequence and push into the relevant vector
         seqs.push(dna_string);
 
-        trancript_counter += 1;
-        if trancript_counter % 100 == 0 {
-            print!("\r Done Reading {} sequences", trancript_counter);
+        transcript_counter += 1;
+        if transcript_counter % 100 == 0 {
+            print!("\r Done Reading {} sequences", transcript_counter);
             io::stdout().flush().ok().expect("Could not flush stdout");
         }
         // looking for two transcripts
         // println!("{:?}", record.id());
         // if trancript_counter == 2 { break; }
         //warn!("Reading only one Chromosome");
-        //break;
+        //if transcript_counter > 1 { break };
     }
-    eprintln!("");
-    info!("Done Reading the Fasta file; Found {} sequences", trancript_counter);
+    println!();
+    info!("Done Reading the Fasta file; Found {} sequences", transcript_counter);
 
     seqs
 }
@@ -130,23 +132,34 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
     //}
 
     let mut transcript_counter = 0;
-    let mut bucket: Vec<Vec<(DnaString, Exts, S)>> = vec![Vec::new(); uhs.len()];
+    let mut bucket: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
     let seqs_len = seqs.len();
     let mut missed_bases_counter: usize = 0;
 
+    let num_threads = 10;
+
+
+
     warn!("Using kmer8 for minimizers ");
-    for contigs in seqs {
+    for contigs in &seqs {
         // One FASTA entry possibly broken into multiple contigs
         // based on the location of `N` int he sequence.
         for seq in contigs {
-            let msps = docks::msp_sequence( seq, &uhs, &mut missed_bases_counter );
+            let seq_len = seq.len();
+            if seq_len >= docks::L {
+                let msps = docks::generate_msps( &seq, &uhs );
+                for msp in msps{
+                    let bucket_id = msp.bucket();
+                    if bucket_id > bucket.len() as u16{
+                        panic!("Small bucket size");
+                    }
 
-            for (bucket_id, bucket_exts, bucket_seqs) in msps{
-                if bucket_id > bucket.len() as u16{
-                    panic!("Small bucket size");
+                    let bucket_seqs_slice = seq.slice(msp.start(), msp.end());
+                    bucket[bucket_id as usize].push((bucket_seqs_slice, Exts::empty(), seq_id.clone()));
                 }
-
-                bucket[bucket_id as usize].push((bucket_seqs, bucket_exts, seq_id.clone()));
+            }
+            else{
+                missed_bases_counter += seq_len;
             }
         }
 
@@ -157,13 +170,13 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
         io::stdout().flush().ok().expect("Could not flush stdout");
         //}
     }
-    eprintln!();
+    println!();
     warn!("Missed total {} bases", missed_bases_counter);
 
     transcript_counter = 0;
-    for bucket_data in bucket {
+    for bucket_data in bucket.into_iter().rev() {
         if bucket_data.len() > 0 {
-            eprintln!("{}", bucket_data.len());
+            eprintln!("{:?}", bucket_data.len());
             //info!("Starting kmer filtering for {:?}", bucket_id);
             let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
                 filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,

@@ -15,7 +15,7 @@ pub type DocksUhs = HashMap<String, u16>;
 pub type Minimizer = kmer::Kmer8;
 
 const K: usize = 8;
-const L: usize = 80;
+pub const L: usize = 80;
 const DOCKS_FILE: &'static str = "res_8_80_4_0.txt";
 
 pub fn read_uhs() -> DocksUhs {
@@ -38,7 +38,7 @@ pub fn read_uhs() -> DocksUhs {
     universal_hitting_set
 }
 
-fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
+pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
                   -> Vec<MspInterval> {
     // Can't partition strings shorter than k
     assert!(seq.len() >= L);
@@ -128,26 +128,9 @@ fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
 }
 
 
-pub fn msp_sequence( seq: DnaString,
-                     uhs: &DocksUhs,
-                     missed_bases: &mut usize )
-                     -> Vec<(u16, Exts, DnaString)> {
-    let mut msps: Vec<(u16, Exts, DnaString)> = Vec::new();
-    if seq.len() >= L {
-        // Check for the length of contigs broken between two `N`.
-
-        let msp_parts = generate_msps( &seq, &uhs );
-
-        let seq_slice = &seq.to_bytes()[..];
-        for msp in msp_parts {
-            let v = DnaString::from_bytes(&seq_slice[(msp.start())..(msp.start() + msp.len())]);
-            let exts = Exts::from_slice_bounds(&seq_slice, msp.start(), msp.len());
-            msps.push((msp.bucket(), exts, v));
-        }
-    }
-    else{
-        *missed_bases += seq.len();
-    }
-
-    msps
-}
+//    let mut msps: Vec<(u16, Exts, DnaString)> = Vec::new();
+//        let seq_slice = &seq.to_bytes()[..];
+//        for msp in msp_parts {
+//            let v = DnaString::from_bytes(&seq_slice[(msp.start())..(msp.start() + msp.len())]);
+//            let exts = Exts::from_slice_bounds(&seq_slice, msp.start(), msp.len());
+//            msps.push((msp.bucket(), exts, v));
