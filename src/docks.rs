@@ -14,10 +14,14 @@ use std::collections::HashMap;
 pub type DocksUhs = HashMap<String, u16>;
 pub type Minimizer = kmer::Kmer8;
 
-pub fn read_uhs(path: String) -> DocksUhs {
+const K: usize = 8;
+const L: usize = 80;
+const DOCKS_FILE: &'static str = "res_8_80_4_0.txt";
+
+pub fn read_uhs() -> DocksUhs {
     info!("Starting reading Docks' Universal Hitting Set");
-    let input = match File::open(&path) {
-        Err(err) => panic!("coulnd't open file {:?}: {}", path, err),
+    let input = match File::open(DOCKS_FILE) {
+        Err(err) => panic!("coulnd't open file {:?}: {}", DOCKS_FILE, err),
         Ok(handle) => handle,
     };
 
@@ -34,13 +38,11 @@ pub fn read_uhs(path: String) -> DocksUhs {
     universal_hitting_set
 }
 
-fn generate_msps( l: usize, k: usize,
-                  seq: &DnaString, uhs: &DocksUhs,
-                  rc: bool)
+fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
                   -> Vec<MspInterval> {
     // Can't partition strings shorter than k
-    assert!(seq.len() >= l);
-    assert!(k <= 8);
+    assert!(seq.len() >= L);
+    assert!(K <= 8);
     assert!(seq.len() < 1<<32);
 
     // lambda to get an index of a kmer in uhs
@@ -80,16 +82,16 @@ fn generate_msps( l: usize, k: usize,
 
     let seq_len = seq.len();
     let mut min_positions = Vec::with_capacity(16);
-    let mut min_pos = find_min_pos_in_range(0, l - k);
+    let mut min_pos = find_min_pos_in_range(0, L - K);
     min_positions.push((0, min_pos));
 
-    for i in 1..(seq_len - l + 1) {
+    for i in 1..(seq_len - L + 1) {
         if i > min_pos {
-            min_pos = find_min_pos_in_range(i, i + l - k);
+            min_pos = find_min_pos_in_range(i, i + L - K);
             min_positions.push((i, min_pos));
         } else {
-            if in_uhs(i + l - k) {
-                let test_min = min_uhs_pos(min_pos, i + l - k);
+            if in_uhs(i + L - K) {
+                let test_min = min_uhs_pos(min_pos, i + L - K);
 
                 if test_min != min_pos {
                     min_pos = test_min;
@@ -109,7 +111,7 @@ fn generate_msps( l: usize, k: usize,
         let interval = MspInterval::new(
             uhs_idx(min_pos).clone() as u16,
             start_pos as u32,
-            (next_pos + l - 1 - start_pos) as u16
+            (next_pos + L - 1 - start_pos) as u16
         );
         slices.push(interval);
     }
@@ -127,17 +129,14 @@ fn generate_msps( l: usize, k: usize,
 
 
 pub fn msp_sequence( seq: DnaString,
-                     uhs: &DocksUhs)
+                     uhs: &DocksUhs,
+                     missed_bases: &mut usize )
                      -> Vec<(u16, Exts, DnaString)> {
-    let l: usize = 40;
-    let k: usize = 8;
-
     let mut msps: Vec<(u16, Exts, DnaString)> = Vec::new();
-    if seq.len() >= l {
+    if seq.len() >= L {
         // Check for the length of contigs broken between two `N`.
 
-        let msp_parts = generate_msps( l, k , &seq,
-                                       &uhs, true );
+        let msp_parts = generate_msps( &seq, &uhs );
 
         let seq_slice = &seq.to_bytes()[..];
         for msp in msp_parts {
@@ -145,6 +144,9 @@ pub fn msp_sequence( seq: DnaString,
             let exts = Exts::from_slice_bounds(&seq_slice, msp.start(), msp.len());
             msps.push((msp.bucket(), exts, v));
         }
+    }
+    else{
+        *missed_bases += seq.len();
     }
 
     msps

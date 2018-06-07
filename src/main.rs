@@ -9,6 +9,7 @@ extern crate bincode;
 extern crate flate2;
 extern crate num;
 extern crate failure;
+extern crate rand;
 
 #[macro_use]
 extern crate smallvec;
@@ -131,22 +132,20 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
     let mut transcript_counter = 0;
     let mut bucket: Vec<Vec<(DnaString, Exts, S)>> = vec![Vec::new(); uhs.len()];
     let seqs_len = seqs.len();
+    let mut missed_bases_counter: usize = 0;
 
     warn!("Using kmer8 for minimizers ");
     for contigs in seqs {
         // One FASTA entry possibly broken into multiple contigs
         // based on the location of `N` int he sequence.
         for seq in contigs {
-            let msps = docks::msp_sequence( seq, &uhs );
+            let msps = docks::msp_sequence( seq, &uhs, &mut missed_bases_counter );
 
-            for msp in msps{
-                let bucket_id = msp.0;
-                let bucket_exts = msp.1;
-                let bucket_seqs = msp.2;
-
+            for (bucket_id, bucket_exts, bucket_seqs) in msps{
                 if bucket_id > bucket.len() as u16{
                     panic!("Small bucket size");
                 }
+
                 bucket[bucket_id as usize].push((bucket_seqs, bucket_exts, seq_id.clone()));
             }
         }
@@ -159,15 +158,16 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
         //}
     }
     eprintln!();
+    warn!("Missed total {} bases", missed_bases_counter);
 
     transcript_counter = 0;
     for bucket_data in bucket {
         if bucket_data.len() > 0 {
+            eprintln!("{}", bucket_data.len());
             //info!("Starting kmer filtering for {:?}", bucket_id);
             let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
                 filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,
                                                      REPORT_ALL_KMER, MEM_SIZE);
-            transcript_counter += 1;
             print!("\r Done Analyzing {}% buckets", transcript_counter*100/uhs.len());
             io::stdout().flush().ok().expect("Could not flush stdout");
 
@@ -176,6 +176,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
             let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
                                                &phf).finish();
         }
+        transcript_counter += 1;
     }
 
     info!("Done de-bruijn graph construction; ");
@@ -283,7 +284,7 @@ fn main() {
 
     if matches.is_present("make") {
         warn!("Creating the index, can take little time.");
-        let uhs = docks::read_uhs("res_8_40_4_0.txt".to_string());
+        let uhs = docks::read_uhs();
 
         // if index not found then create a new one
         let reader = fasta::Reader::from_file(fasta_file).unwrap();
