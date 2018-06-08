@@ -10,6 +10,7 @@ extern crate flate2;
 extern crate num;
 extern crate failure;
 extern crate crossbeam;
+extern crate rayon;
 
 #[macro_use]
 extern crate smallvec;
@@ -36,6 +37,7 @@ use std::collections::HashMap;
 
 use std::thread;
 use std::sync::mpsc;
+use rayon::prelude::*;
 
 use num::One;
 use clap::{Arg, App};
@@ -103,24 +105,24 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
             let mut bucket: Vec<Vec<(DnaStringSlice, Exts, u8)>> = vec![Vec::new(); uhs.len()];
             call_filter_kmers(&seqs, index_file,
                               u8::min_value(),
-                              &uhs, &mut bucket,
-                              &mut missed_bases_counter);
+                              &uhs, & bucket,
+                              & missed_bases_counter);
         },
         U8_MAX ... U16_MAX => {
             info!("Using 16 bit variable for storing the data.");
             let mut bucket: Vec<Vec<(DnaStringSlice, Exts, u16)>> = vec![Vec::new(); uhs.len()];
             call_filter_kmers(&seqs, index_file,
                               u16::min_value(),
-                              &uhs, &mut bucket,
-                              &mut missed_bases_counter);
+                              &uhs, & bucket,
+                              & missed_bases_counter);
         },
         U16_MAX ... U32_MAX => {
             info!("Using 32 bit variable for storing the data.");
             let mut bucket: Vec<Vec<(DnaStringSlice, Exts, u32)>> = vec![Vec::new(); uhs.len()];
             call_filter_kmers::<u32>(&seqs, index_file,
                                      u32::min_value(),
-                                     &uhs, &mut bucket,
-                                     &mut missed_bases_counter);
+                                     &uhs, & bucket,
+                                     & missed_bases_counter);
         },
         _ => {
             error!("Too many ({}) sequneces to handle.", seqs_len);
@@ -131,9 +133,9 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
 
 fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
                         mut seq_id: S, uhs: &docks::DocksUhs,
-                        bucket: &mut Vec<Vec<(DnaStringSlice, Exts, S)>>,
-                        missed_bases_counter: &mut usize)
-where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Send{
+                        bucket: & Vec<Vec<(DnaStringSlice, Exts, S)>>,
+                        missed_bases_counter: & usize)
+where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Send + Sync{
     //let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
 
     // TODO: Divergence for MSP
@@ -165,8 +167,8 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
                     match thread_queue.get_work() {
                         Some(seq_id) => {
                             perform_task(&seqs[seq_id as usize],
-                                         &uhs, &mut bucket,
-                                         missed_bases_counter);
+                                         &uhs, &bucket,
+                                         &missed_bases_counter);
                                          //&mut seq_id);
                         },
                         None => { break; },
@@ -223,8 +225,8 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
 
 
 fn perform_task<S:Clone>(contigs: &Vec<DnaString>, uhs: &docks::DocksUhs,
-                         bucket: &mut Vec<Vec<(DnaStringSlice, Exts, S)>>,
-                         missed_bases_counter: &mut usize){//, seq_id: &mut S ){
+                         bucket: &Vec<Vec<(DnaStringSlice, Exts, S)>>,
+                         missed_bases_counter:  &usize){//, seq_id: &mut S ){
     // One FASTA entry possibly broken into multiple contigs
     // based on the location of `N` int he sequence.
     for seq in contigs {
@@ -242,7 +244,7 @@ fn perform_task<S:Clone>(contigs: &Vec<DnaString>, uhs: &docks::DocksUhs,
             }
         }
         else{
-            *missed_bases_counter += seq_len;
+            //*missed_bases_counter += seq_len;
         }
     }
 
