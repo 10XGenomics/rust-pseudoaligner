@@ -9,6 +9,7 @@ extern crate bincode;
 extern crate flate2;
 extern crate num;
 extern crate failure;
+extern crate crossbeam;
 
 #[macro_use]
 extern crate smallvec;
@@ -21,6 +22,7 @@ extern crate serde;
 
 mod utils;
 mod docks;
+mod work_queue;
 
 // Import some modules
 use std::io;
@@ -92,37 +94,47 @@ fn read_fasta(reader: fasta::Reader<File>)
 fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
                          uhs: docks::DocksUhs) {
     let seqs_len = seqs.len();
+    let mut missed_bases_counter: usize = 0;
 
     // Based on the number of sequences chose the right primary datatype
     match seqs_len {
         1 ...U8_MAX  => {
             info!("Using 8 bit variable for storing the data.");
-            call_filter_kmers(seqs, index_file,
+            let mut bucket: Vec<Vec<(DnaStringSlice, Exts, u8)>> = vec![Vec::new(); uhs.len()];
+            call_filter_kmers(&seqs, index_file,
                               u8::min_value(),
-                              uhs);
+                              &uhs, &mut bucket,
+                              &mut missed_bases_counter);
         },
         U8_MAX ... U16_MAX => {
             info!("Using 16 bit variable for storing the data.");
-            call_filter_kmers(seqs, index_file,
+            let mut bucket: Vec<Vec<(DnaStringSlice, Exts, u16)>> = vec![Vec::new(); uhs.len()];
+            call_filter_kmers(&seqs, index_file,
                               u16::min_value(),
-                              uhs);
+                              &uhs, &mut bucket,
+                              &mut missed_bases_counter);
         },
         U16_MAX ... U32_MAX => {
             info!("Using 32 bit variable for storing the data.");
-            call_filter_kmers::<u32>(seqs,index_file ,
+            let mut bucket: Vec<Vec<(DnaStringSlice, Exts, u32)>> = vec![Vec::new(); uhs.len()];
+            call_filter_kmers::<u32>(&seqs, index_file,
                                      u32::min_value(),
-                                     uhs);
+                                     &uhs, &mut bucket,
+                                     &mut missed_bases_counter);
         },
         _ => {
             error!("Too many ({}) sequneces to handle.", seqs_len);
         },
     };
+    warn!("Missed total {} bases", missed_bases_counter);
 }
 
-fn call_filter_kmers<S>(seqs: Vec<Vec<DnaString>>, index_file: &str,
-                        mut seq_id: S, uhs: docks::DocksUhs)
-where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
-    let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
+fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
+                        mut seq_id: S, uhs: &docks::DocksUhs,
+                        bucket: &mut Vec<Vec<(DnaStringSlice, Exts, S)>>,
+                        missed_bases_counter: &mut usize)
+where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Send{
+    //let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
 
     // TODO: Divergence for MSP
     //let mut input_tuples = Vec::new();
@@ -131,68 +143,72 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
     //    seq_id = seq_id + num::one();
     //}
 
-    let mut transcript_counter = 0;
-    let mut bucket: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
+    let mut progress_seq_counter: usize = 0;
+
     let seqs_len = seqs.len();
-    let mut missed_bases_counter: usize = 0;
+    let seq_ids: Vec<u32> = (0 .. seqs_len as u32).collect();
 
-    let num_threads = 10;
+    let queue = work_queue::WorkQueue::new(seq_ids);
 
-
-
+    let mut threads = Vec::new();
+    info!("Spawning {} threads for Bucketing.", work_queue::MAX_WORKER);
     warn!("Using kmer8 for minimizers ");
-    for contigs in &seqs {
-        // One FASTA entry possibly broken into multiple contigs
-        // based on the location of `N` int he sequence.
-        for seq in contigs {
-            let seq_len = seq.len();
-            if seq_len >= docks::L {
-                let msps = docks::generate_msps( &seq, &uhs );
-                for msp in msps{
-                    let bucket_id = msp.bucket();
-                    if bucket_id > bucket.len() as u16{
-                        panic!("Small bucket size");
-                    }
 
-                    let bucket_seqs_slice = seq.slice(msp.start(), msp.end());
-                    bucket[bucket_id as usize].push((bucket_seqs_slice, Exts::empty(), seq_id.clone()));
-                }
-            }
-            else{
-                missed_bases_counter += seq_len;
-            }
+    info!("Starting Bucketing");
+    crossbeam::scope(|scope| {
+        for thread_id in 0.. work_queue::MAX_WORKER {
+            let thread_queue = queue.clone();
+
+            let handle = scope.spawn(move || {
+                loop {
+                    // If work is available, do that work.
+                    match thread_queue.get_work() {
+                        Some(seq_id) => {
+                            perform_task(&seqs[seq_id as usize],
+                                         &uhs, &mut bucket,
+                                         missed_bases_counter);
+                                         //&mut seq_id);
+                        },
+                        None => { break; },
+                    };
+                    //println!();
+                    //// Record that some work was done.
+                    //work_done += 1;
+                    //threads.push(handle);
+                } // end loop
+            });
+            threads.push(handle);
         }
-
-        seq_id = seq_id + num::one();
-        transcript_counter += 1;
-        //if transcript_counter % 10 == 0 {
-        print!("\r Done Bucketing {}% of the reference sequences", transcript_counter*100/seqs_len);
-        io::stdout().flush().ok().expect("Could not flush stdout");
-        //}
-    }
-    println!();
-    warn!("Missed total {} bases", missed_bases_counter);
-
-    transcript_counter = 0;
-    for bucket_data in bucket.into_iter().rev() {
-        if bucket_data.len() > 0 {
-            eprintln!("{:?}", bucket_data.len());
-            //info!("Starting kmer filtering for {:?}", bucket_id);
-            let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
-                filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,
-                                                     REPORT_ALL_KMER, MEM_SIZE);
-            print!("\r Done Analyzing {}% buckets", transcript_counter*100/uhs.len());
-            io::stdout().flush().ok().expect("Could not flush stdout");
-
-            //info!("Starting uncompressed de-bruijn graph construction");
-            //println!("{:?}", phf);
-            let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
-                                               &phf).finish();
+        // Just make sure that all the other threads are done.
+        for handle in threads {
+            handle.join();
         }
-        transcript_counter += 1;
-    }
+    });
 
-    info!("Done de-bruijn graph construction; ");
+    info!("Bucketing successfully finished.");
+
+    //let mut dbgs: Vec<DebruijnGraph<KmerType, EqClassIdType>> = Vec::new();
+    //transcript_counter = 0;
+    //for bucket_data in bucket.into_iter().rev() {
+    //    if bucket_data.len() > 0 {
+    //        eprintln!("{:?}", bucket_data.len());
+    //        //info!("Starting kmer filtering for {:?}", bucket_id);
+    //        let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
+    //            filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,
+    //                                                 REPORT_ALL_KMER, MEM_SIZE);
+    //        print!("\r Done Analyzing {}% buckets", transcript_counter*100/uhs.len());
+    //        io::stdout().flush().ok().expect("Could not flush stdout");
+
+    //        //info!("Starting uncompressed de-bruijn graph construction");
+    //        //println!("{:?}", phf);
+    //        let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
+    //                                           &phf).finish();
+    //        dbgs.push(dbg);
+    //    }
+    //    transcript_counter += 1;
+    //}
+
+    //info!("Done de-bruijn graph construction; ");
     //let is_cmp = dbg.is_compressed();
     //if is_cmp.is_some() {
     //    warn!("not compressed: nodes: {:?}", is_cmp);
@@ -206,6 +222,37 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> {
 }
 
 
+fn perform_task<S:Clone>(contigs: &Vec<DnaString>, uhs: &docks::DocksUhs,
+                         bucket: &mut Vec<Vec<(DnaStringSlice, Exts, S)>>,
+                         missed_bases_counter: &mut usize){//, seq_id: &mut S ){
+    // One FASTA entry possibly broken into multiple contigs
+    // based on the location of `N` int he sequence.
+    for seq in contigs {
+        let seq_len = seq.len();
+        if seq_len >= docks::L {
+            let msps = docks::generate_msps( &seq, &uhs );
+            for msp in msps{
+                let bucket_id = msp.bucket();
+                if bucket_id > bucket.len() as u16{
+                    panic!("Small bucket size");
+                }
+
+                let bucket_seqs_slice = seq.slice(msp.start(), msp.end());
+                //bucket[bucket_id as usize].push((bucket_seqs_slice, Exts::empty(), seq_id.clone()));
+            }
+        }
+        else{
+            *missed_bases_counter += seq_len;
+        }
+    }
+
+    //seq_id = seq_id + num::one();
+    //transcript_counter += 1;
+    ////if transcript_counter % 10 == 0 {
+    //print!("\r Done Bucketing {}% of the reference sequences", transcript_counter*100/seqs_len);
+    //io::stdout().flush().ok().expect("Could not flush stdout");
+    ////}
+}
 
 
 fn process_reads<S>(phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,

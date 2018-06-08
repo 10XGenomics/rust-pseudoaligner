@@ -17,6 +17,7 @@ flate2 = "1.0.1"
 serde = "1.0.50"
 failure = "0.1.1"
 num = "0.1.42"
+crossbeam = "0.3.2"
 
 [dependencies.boomphf]
 path = "../../rust-boomphf"
