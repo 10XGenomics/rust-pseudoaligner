@@ -1,14 +1,13 @@
 // ! Reading in the universal hitting sets
 // Designing small universal k-mer hitting sets for improved analysis of high-throughput sequencing Yaron Orenstein et. al
 
-use debruijn::{Exts, Vmer, Kmer, kmer, DnaSlice};
 use debruijn::msp::MspInterval;
+use debruijn::{Vmer, Kmer, kmer};
 use debruijn::dna_string::DnaString;
 
 use std::fs::File;
-use std::cmp::min;
-use std::io::{BufReader, BufRead};
 use std::collections::HashMap;
+use std::io::{BufReader, BufRead};
 
 // Docks Universal hitting sets
 pub type DocksUhs = HashMap<String, u16>;

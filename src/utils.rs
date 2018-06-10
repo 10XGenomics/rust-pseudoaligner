@@ -34,7 +34,7 @@ where K:Hash, D: Eq + Hash {
 
 impl<K:Hash, E, D> Index<K, E, D>
 where K:Hash, D: Clone + Debug + Eq + Hash {
-    pub fn new(dbg: DebruijnGraph<K, EqClassIdType>,
+    fn new(dbg: DebruijnGraph<K, EqClassIdType>,
                phf: boomphf::BoomHashMap2<K, E, EqClassIdType>,
                eqclasses: HashMap<Vec<D>, EqClassIdType>) -> Index<K, E, D>{
 
@@ -59,7 +59,7 @@ where K:Hash, D: Clone + Debug + Eq + Hash {
         &self.phf
     }
 
-    pub fn get_dbg(&self) -> &DebruijnGraph<K, EqClassIdType>{
+    fn get_dbg(&self) -> &DebruijnGraph<K, EqClassIdType>{
         &self.dbg
     }
 
@@ -69,7 +69,7 @@ where K:Hash, D: Clone + Debug + Eq + Hash {
 }
 
 /// Open a (possibly gzipped) file into a BufReader.
-pub fn open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
+fn open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
     let r = File::open(p.as_ref())?;
 
     if p.as_ref().extension().unwrap() == "gz" {
@@ -84,7 +84,7 @@ pub fn open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
 
 
 
-pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(g: &T, filename: P) -> Result<(), bincode::Error> {
+fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(g: &T, filename: P) -> Result<(), bincode::Error> {
     let f = match File::create(&filename) {
         Err(err) => panic!("couldn't create file {:?}: {}", filename, err),
         Ok(f) => f,

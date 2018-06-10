@@ -32,11 +32,8 @@ use std::ops::Add;
 use std::io::Write;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::collections::HashMap;
 
-use std::thread;
 use std::sync::mpsc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use num::One;
@@ -47,12 +44,9 @@ use serde::Serialize;
 use bio::io::{fasta, fastq};
 
 use debruijn::dna_string::*;
-use debruijn::filter::filter_kmers;
 use debruijn::graph::{DebruijnGraph};
 use debruijn::{Exts, kmer, Vmer};
 use debruijn::filter::EqClassIdType;
-use debruijn::msp::{simple_scan, MspInterval};
-use debruijn::compression::compress_kmers_with_hash;
 
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
@@ -122,26 +116,24 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
     };
 }
 
-fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
-                        uhs: &docks::DocksUhs, mut seq_id: S)
+fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, _index_file: &str,
+                        uhs: &docks::DocksUhs, _seq_id: S)
 where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Send + Sync + Num + NumCast{
-    let mut summarizer = debruijn::filter::CountFilterEqClass::new(MIN_KMERS);
     info!("Starting Bucketing");
-
     let (tx, rx) = mpsc::channel();
     let num_seqs = seqs.len();
     let queue = Arc::new(work_queue::WorkQueue::new());
 
     info!("Spawning {} threads for Bucketing.", work_queue::MAX_WORKER);
     crossbeam::scope(|scope| {
-        for thread_id in 0 .. work_queue::MAX_WORKER {
+        for _ in 0 .. work_queue::MAX_WORKER {
             let tx = tx.clone();
             let queue = Arc::clone(&queue);
 
             scope.spawn(move || {
                 loop {
                     // If work is available, do that work.
-                    match queue.get_work(&seqs) {
+                    match queue.get_work(seqs) {
                         Some((seq, head)) => {
                             let thread_data = work_queue::run(seq, uhs);
                             tx.send((thread_data, head)).expect("Could not send data!");
@@ -174,29 +166,55 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
         }
     }
 
+    println!();
     info!("Bucketing successfully finished.");
     warn!("Missed total {} bases", missed_bases_counter);
 
     let mut dbgs: Vec<DebruijnGraph<KmerType, EqClassIdType>> = Vec::new();
-    let mut transcript_counter = 0;
-    for bucket_data in bucket.into_iter().rev() {
-        if bucket_data.len() > 0 {
-            eprintln!("{:?}", bucket_data.len());
-            //info!("Starting kmer filtering for {:?}", bucket_id);
-            let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
-                filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &mut summarizer, STRANDED,
-                                                     REPORT_ALL_KMER, MEM_SIZE);
-            print!("\r Done Analyzing {}% buckets", transcript_counter*100/uhs.len());
-            io::stdout().flush().ok().expect("Could not flush stdout");
+    {
+        info!("Starting per-bucket De-bruijn Graph Creation");
+        let (tx, rx) = mpsc::channel();
+        let bucket_ref = &bucket;
+        let num_buckets = bucket.len();
+        let queue = Arc::new(work_queue::WorkQueue::new());
 
-            //info!("Starting uncompressed de-bruijn graph construction");
-            //println!("{:?}", phf);
-            let dbg = compress_kmers_with_hash(STRANDED, debruijn::compression::ScmapCompress::new(),
-                                               &phf).finish();
-            dbgs.push(dbg);
+        info!("Spawning {} threads for Analyzing.", work_queue::MAX_WORKER);
+        crossbeam::scope(|scope| {
+            for _ in 0 .. work_queue::MAX_WORKER {
+                let tx = tx.clone();
+                let queue = Arc::clone(&queue);
+
+                scope.spawn(move || {
+                    loop {
+                        // If work is available, do that work.
+                        match queue.get_rev_work(bucket_ref) {
+                            Some((bucket_data, _)) => {
+                                let thread_data = work_queue::analyze(bucket_data);
+                                tx.send(thread_data).expect("Could not send data!");
+
+                                let done = queue.len();
+                                if done % 10 == 0 {
+                                    print!("\rDone Analyzing {}% of the buckets",
+                                           done*100/num_buckets);
+                                    io::stdout().flush().ok().expect("Could not flush stdout");
+                                }
+                            },
+                            None => { break; },
+                        };
+                    } // end loop
+                });
+            }
+        });
+
+        drop(tx);
+        for item in rx.iter() {
+            match item {
+                None => (),
+                Some(dbg) => dbgs.push(dbg),
+            };
         }
-        transcript_counter += 1;
     }
+
 
     //info!("Done de-bruijn graph construction; ");
     //let is_cmp = dbg.is_compressed();
