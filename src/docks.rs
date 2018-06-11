@@ -15,7 +15,7 @@ pub type Minimizer = kmer::Kmer8;
 
 const K: usize = 8;
 pub const L: usize = 80;
-const DOCKS_FILE: &'static str = "res_8_80_4_0.txt";
+const DOCKS_FILE: &'static str = "res_8_30_4_0.txt";
 
 pub fn read_uhs() -> DocksUhs {
     info!("Starting reading Docks' Universal Hitting Set");

@@ -34,7 +34,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use num::One;
 use num::Num;
@@ -44,8 +44,8 @@ use serde::Serialize;
 use bio::io::{fasta, fastq};
 
 use debruijn::dna_string::*;
-use debruijn::graph::{DebruijnGraph};
 use debruijn::{Exts, kmer, Vmer};
+use debruijn::graph::{DebruijnGraph};
 use debruijn::filter::EqClassIdType;
 
 const MIN_KMERS: usize = 1;
@@ -174,8 +174,8 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     {
         info!("Starting per-bucket De-bruijn Graph Creation");
         let (tx, rx) = mpsc::channel();
-        let bucket_ref = &bucket;
         let num_buckets = bucket.len();
+        let atomic_buckets = Arc::new(Mutex::new(bucket));
         let queue = Arc::new(work_queue::WorkQueue::new());
 
         info!("Spawning {} threads for Analyzing.", work_queue::MAX_WORKER);
@@ -183,11 +183,12 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
             for _ in 0 .. work_queue::MAX_WORKER {
                 let tx = tx.clone();
                 let queue = Arc::clone(&queue);
+                let bucket_ref = Arc::clone(&atomic_buckets);
 
                 scope.spawn(move || {
                     loop {
                         // If work is available, do that work.
-                        match queue.get_rev_work(bucket_ref) {
+                        match queue.get_rev_work(&bucket_ref) {
                             Some((bucket_data, _)) => {
                                 let thread_data = work_queue::analyze(bucket_data);
                                 tx.send(thread_data).expect("Could not send data!");
@@ -195,7 +196,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
                                 let done = queue.len();
                                 if done % 10 == 0 {
                                     print!("\rDone Analyzing {}% of the buckets",
-                                           done*100/num_buckets);
+                                           std::cmp::max(100, done*100/num_buckets));
                                     io::stdout().flush().ok().expect("Could not flush stdout");
                                 }
                             },
@@ -215,14 +216,10 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
         }
     }
 
+    info!("Done seprate de-bruijn graph construction; ");
+    info!("Starting merge");
 
-    //info!("Done de-bruijn graph construction; ");
-    //let is_cmp = dbg.is_compressed();
-    //if is_cmp.is_some() {
-    //    warn!("not compressed: nodes: {:?}", is_cmp);
-    //    //dbg.print();
-    //}
-
+    let full_dbg = work_queue::merge_graphs(dbgs);
     //let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
 
     //info!("Dumping index into File: {:?}", index_file);
