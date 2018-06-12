@@ -14,8 +14,8 @@ pub type DocksUhs = HashMap<String, u16>;
 pub type Minimizer = kmer::Kmer8;
 
 const K: usize = 8;
-pub const L: usize = 80;
-const DOCKS_FILE: &'static str = "res_8_30_4_0.txt";
+pub const L: usize = 40;
+const DOCKS_FILE: &'static str = "res_8_40_4_0.txt";
 
 pub fn read_uhs() -> DocksUhs {
     info!("Starting reading Docks' Universal Hitting Set");
@@ -33,7 +33,9 @@ pub fn read_uhs() -> DocksUhs {
         kmer_id += 1;
     }
 
-    info!("Read total {:?} kmers as Docks-UHS", universal_hitting_set.len());
+    info!("Using K = {}, L = {}", K, L);
+    info!("Read total {:?} kmers as Docks-UHS from {}",
+          universal_hitting_set.len(), DOCKS_FILE);
     universal_hitting_set
 }
 

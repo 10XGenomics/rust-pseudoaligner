@@ -45,7 +45,6 @@ use bio::io::{fasta, fastq};
 
 use debruijn::dna_string::*;
 use debruijn::{Exts, kmer, Vmer};
-use debruijn::graph::{DebruijnGraph};
 use debruijn::filter::EqClassIdType;
 
 const MIN_KMERS: usize = 1;
@@ -56,7 +55,7 @@ const U8_MAX: usize = u8::max_value() as usize;
 const U16_MAX: usize = u16::max_value() as usize;
 const U32_MAX: usize = u32::max_value() as usize;
 
-pub type KmerType = kmer::Kmer32;
+pub type KmerType = kmer::Kmer40;
 
 fn read_fasta(reader: fasta::Reader<File>)
               -> Vec<Vec<DnaString>> {
@@ -170,11 +169,13 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     info!("Bucketing successfully finished.");
     warn!("Missed total {} bases", missed_bases_counter);
 
-    let mut dbgs: Vec<DebruijnGraph<KmerType, EqClassIdType>> = Vec::new();
+    let mut dbgs = Vec::new();
+    let summarizer = Arc::new(debruijn::filter::CountFilterEqClass::new(MIN_KMERS));
     {
         info!("Starting per-bucket De-bruijn Graph Creation");
         let (tx, rx) = mpsc::channel();
         let num_buckets = bucket.len();
+
         let atomic_buckets = Arc::new(Mutex::new(bucket));
         let queue = Arc::new(work_queue::WorkQueue::new());
 
@@ -184,19 +185,20 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
                 let tx = tx.clone();
                 let queue = Arc::clone(&queue);
                 let bucket_ref = Arc::clone(&atomic_buckets);
+                let summarizer_ref = Arc::clone(&summarizer);
 
                 scope.spawn(move || {
                     loop {
                         // If work is available, do that work.
                         match queue.get_rev_work(&bucket_ref) {
                             Some((bucket_data, _)) => {
-                                let thread_data = work_queue::analyze(bucket_data);
+                                let thread_data = work_queue::analyze(bucket_data, &summarizer_ref);
                                 tx.send(thread_data).expect("Could not send data!");
 
                                 let done = queue.len();
                                 if done % 10 == 0 {
                                     print!("\rDone Analyzing {}% of the buckets",
-                                           std::cmp::max(100, done*100/num_buckets));
+                                           std::cmp::min(100, done*100/num_buckets));
                                     io::stdout().flush().ok().expect("Could not flush stdout");
                                 }
                             },
@@ -218,8 +220,10 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
 
     info!("Done seprate de-bruijn graph construction; ");
     info!("Starting merge");
-
-    let full_dbg = work_queue::merge_graphs(dbgs);
+    //println!("{:?}", summarizer);
+    //println!("{:?}", dbgs);
+    //let full_dbg = work_queue::merge_graphs(dbgs);
+    //println!("{:?}", full_dbg);
     //let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
 
     //info!("Dumping index into File: {:?}", index_file);
