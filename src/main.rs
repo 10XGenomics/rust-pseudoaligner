@@ -10,6 +10,7 @@ extern crate flate2;
 extern crate num;
 extern crate failure;
 extern crate crossbeam;
+extern crate rand;
 
 #[macro_use]
 extern crate smallvec;
@@ -140,7 +141,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
                             let done = queue.len();
                             if done % 10 == 0 {
                                 print!("\rDone Bucketing {}% of the reference sequences",
-                                       done*100/num_seqs);
+                                       std::cmp::min(100, done*100/num_seqs));
                                 io::stdout().flush().ok().expect("Could not flush stdout");
                             }
                         },
@@ -198,7 +199,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
                                 let done = queue.len();
                                 if done % 10 == 0 {
                                     print!("\rDone Analyzing {}% of the buckets",
-                                           std::cmp::min(100, done*100/num_buckets));
+                                           done*100/num_buckets);
                                     io::stdout().flush().ok().expect("Could not flush stdout");
                                 }
                             },
@@ -222,7 +223,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     info!("Starting merge");
     //println!("{:?}", summarizer);
     //println!("{:?}", dbgs);
-    //let full_dbg = work_queue::merge_graphs(dbgs);
+    let full_dbg = work_queue::merge_graphs(dbgs);
     //println!("{:?}", full_dbg);
     //let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
 
