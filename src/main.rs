@@ -52,6 +52,7 @@ const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
 const MEM_SIZE: usize = 1;
 const REPORT_ALL_KMER: bool = false;
+const BUCKET_SIZE_THRESHOLD: usize = 500;
 const U8_MAX: usize = u8::max_value() as usize;
 const U16_MAX: usize = u16::max_value() as usize;
 const U32_MAX: usize = u32::max_value() as usize;
@@ -116,7 +117,7 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
     };
 }
 
-fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, _index_file: &str,
+fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
                         uhs: &docks::DocksUhs, _seq_id: S)
 where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Send + Sync + Num + NumCast{
     info!("Starting Bucketing");
@@ -132,19 +133,19 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
 
             scope.spawn(move || {
                 loop {
+                    let done = queue.len();
+                    if done % 10 == 0 {
+                        print!("\rDone Bucketing {}% of the reference sequences",
+                               std::cmp::min(100, done*100/num_seqs));
+                        io::stdout().flush().ok().expect("Could not flush stdout");
+                    }
+
                     // If work is available, do that work.
                     match queue.get_work(seqs) {
                         Some((seq, head)) => {
                             let thread_data = work_queue::run(seq, uhs);
                             tx.send((thread_data, head)).expect("Could not send data!");
-
-                            let done = queue.len();
-                            if done % 10 == 0 {
-                                print!("\rDone Bucketing {}% of the reference sequences",
-                                       std::cmp::min(100, done*100/num_seqs));
-                                io::stdout().flush().ok().expect("Could not flush stdout");
-                            }
-                        },
+                          },
                         None => { break; },
                     };
                 } // end loop
@@ -153,7 +154,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     });
 
     let mut missed_bases_counter: usize = 0;
-    let mut bucket: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
+    let mut buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
 
     for _ in 0..num_seqs {
         let (seq_data, head) = rx.recv().unwrap();
@@ -162,7 +163,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
         let bit_head: S = num::cast(head).unwrap();
         missed_bases_counter += missed_bases;
         for (bucket_id, slices) in bucket_slices {
-            bucket[bucket_id as usize].push((slices, Exts::empty(), bit_head.clone()));
+            buckets[bucket_id as usize].push((slices, Exts::empty(), bit_head.clone()));
         }
     }
 
@@ -170,14 +171,35 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     info!("Bucketing successfully finished.");
     warn!("Missed total {} bases", missed_bases_counter);
 
+    // separating small and big buckets since call to Boomphf new is expensive
+    let mut big_buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = Vec::new();
+    let mut small_bucket: Vec<(DnaStringSlice, Exts, S)> = Vec::new();
+    for bucket in buckets {
+        let num_elem = bucket.len();
+        if num_elem != 0 {
+            if num_elem > BUCKET_SIZE_THRESHOLD {
+                big_buckets.push(bucket);
+            }
+            else{
+                for elem in bucket {
+                    small_bucket.push(elem);
+                }
+            }
+        }
+    }
+
+    // do all small buckets at once
+    let mut num_buckets = big_buckets.len();
+    big_buckets.insert(num_buckets/2, small_bucket);
+    num_buckets += 1;
+
     let mut dbgs = Vec::new();
     let summarizer = Arc::new(debruijn::filter::CountFilterEqClass::new(MIN_KMERS));
     {
         info!("Starting per-bucket De-bruijn Graph Creation");
         let (tx, rx) = mpsc::channel();
-        let num_buckets = bucket.len();
 
-        let atomic_buckets = Arc::new(Mutex::new(bucket));
+        let atomic_buckets = Arc::new(Mutex::new(big_buckets));
         let queue = Arc::new(work_queue::WorkQueue::new());
 
         info!("Spawning {} threads for Analyzing.", work_queue::MAX_WORKER);
@@ -190,18 +212,18 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
 
                 scope.spawn(move || {
                     loop {
+                        let done = queue.len();
+                        if done % 10 == 0 {
+                            print!("\rDone Analyzing {}% of the buckets",
+                                   done*100/num_buckets);
+                            io::stdout().flush().ok().expect("Could not flush stdout");
+                        }
+
                         // If work is available, do that work.
                         match queue.get_rev_work(&bucket_ref) {
                             Some((bucket_data, _)) => {
                                 let thread_data = work_queue::analyze(bucket_data, &summarizer_ref);
                                 tx.send(thread_data).expect("Could not send data!");
-
-                                let done = queue.len();
-                                if done % 10 == 0 {
-                                    print!("\rDone Analyzing {}% of the buckets",
-                                           done*100/num_buckets);
-                                    io::stdout().flush().ok().expect("Could not flush stdout");
-                                }
                             },
                             None => { break; },
                         };
@@ -219,16 +241,16 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
         }
     }
 
+    println!();
     info!("Done seprate de-bruijn graph construction; ");
     info!("Starting merge");
     //println!("{:?}", summarizer);
-    //println!("{:?}", dbgs);
+
     let full_dbg = work_queue::merge_graphs(dbgs);
-    //println!("{:?}", full_dbg);
     //let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
 
-    //info!("Dumping index into File: {:?}", index_file);
-    //utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
+    info!("Dumping index into File: {:?}", index_file);
+    utils::write_obj(&full_dbg, index_file).expect("Can't dump the index");
 }
 
 

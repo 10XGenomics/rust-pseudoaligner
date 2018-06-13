@@ -84,7 +84,7 @@ fn open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
 
 
 
-fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(g: &T, filename: P) -> Result<(), bincode::Error> {
+pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(g: &T, filename: P) -> Result<(), bincode::Error> {
     let f = match File::create(&filename) {
         Err(err) => panic!("couldn't create file {:?}: {}", filename, err),
         Ok(f) => f,
