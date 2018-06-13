@@ -12,14 +12,16 @@ use REPORT_ALL_KMER;
 use MEM_SIZE;
 
 use boomphf;
+use pdqsort;
 use debruijn::*;
 use debruijn::graph::*;
 use debruijn::filter::*;
+use bio::io::{fastq};
 use debruijn::compression::*;
 use docks::{L, DocksUhs, generate_msps};
 use debruijn::dna_string::{DnaString, DnaStringSlice};
 
-pub const MAX_WORKER: usize = 6;
+pub const MAX_WORKER: usize = 20;
 
 pub struct WorkQueue{
     head : AtomicUsize,
@@ -88,13 +90,13 @@ pub fn analyze<S:Clone+Eq+Hash+Ord+Debug>( bucket_data: Vec<(DnaStringSlice, Ext
                                            summarizer: &Arc<CountFilterEqClass<S>>)
                                            -> Option<BaseGraph<KmerType, EqClassIdType>> {
     if bucket_data.len() > 0 {
-        println!("{:?}", bucket_data);
+        //println!("{:?}", bucket_data);
         // run filter_kmer
         let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
             filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &summarizer, STRANDED,
                                                  REPORT_ALL_KMER, MEM_SIZE);
 
-        println!("{:?}", phf);
+        //println!("{:?}", phf);
         // compress the graph
         let dbg = compress_kmers_with_hash(STRANDED, ScmapCompress::new(), phf);
 
@@ -116,4 +118,46 @@ pub fn merge_graphs( uncompressed_dbgs: Vec<BaseGraph<KmerType, EqClassIdType>> 
 
     //println!("{:?}", dbg_graph);
     dbg_graph
+}
+
+pub fn get_next_record<R>(reader: &Arc<Mutex<fastq::Records<R>>>)
+                      -> Option<Result<fastq::Record, std::io::Error>>
+where R: std::io::Read{
+    let mut lock = reader.lock().unwrap();
+    lock.next()
+}
+
+pub fn map<S>(seqs: DnaString,
+              dbg: &DebruijnGraph<KmerType, EqClassIdType>,
+              eq_classes: &Vec<Vec<S>>) -> Vec<S>
+where S: Ord + PartialEq + Clone {
+    let mut eq_class: Vec<S> = Vec::new();
+
+    for kmer in seqs.iter_kmers() {
+        let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
+            Some(links) => links,
+            None => (std::usize::MAX, Dir::Right, false),
+        };
+
+        if nid != std::usize::MAX {
+            let eq_id = *dbg.get_node(nid).data();
+            let labels = &eq_classes[eq_id as usize];
+            eq_class.extend(labels.clone().into_iter());
+            pdqsort::sort(&mut eq_class);
+            eq_class.dedup();
+        }
+        //let maybe_data = phf.get(&kmer);
+        //match maybe_data {
+        //    Some((_, color)) => {
+        //        let labels = eq_classes[*color as usize].clone();
+        //        eq_class.extend(labels) ;
+        //        pdqsort::sort(&mut eq_class);
+        //        eq_class.dedup();
+        //    },
+        //    None => (),
+        //}
+        //println!("{:?}", eq_class);
+    }
+
+    eq_class
 }

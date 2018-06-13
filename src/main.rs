@@ -36,6 +36,7 @@ use std::hash::Hash;
 
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use num::One;
 use num::Num;
@@ -45,8 +46,9 @@ use serde::Serialize;
 use bio::io::{fasta, fastq};
 
 use debruijn::dna_string::*;
-use debruijn::{Exts, kmer, Vmer};
+use debruijn::{Exts, kmer};
 use debruijn::filter::EqClassIdType;
+use debruijn::graph::DebruijnGraph;
 
 const MIN_KMERS: usize = 1;
 const STRANDED: bool = true;
@@ -247,59 +249,73 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     //println!("{:?}", summarizer);
 
     let full_dbg = work_queue::merge_graphs(dbgs);
-    //let ref_index = utils::Index::new(dbg, phf, summarizer.get_eq_classes());
+    let eq_classes = Arc::try_unwrap(summarizer).unwrap().get_eq_classes().into_inner().expect("Can't unwrap eqclass");
 
+    let ref_index: utils::Index<KmerType, Exts, S> = utils::Index::new(full_dbg, eq_classes);
     info!("Dumping index into File: {:?}", index_file);
-    utils::write_obj(&full_dbg, index_file).expect("Can't dump the index");
+    utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
 }
 
-
-fn process_reads<S>(phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
-                    //dbg: &DebruijnGraph<KmerType, EqClassIdType>,
+fn process_reads<S>(//phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
+                    dbg: &DebruijnGraph<KmerType, EqClassIdType>,
                     eq_classes: &Vec<Vec<S>>,
                     reader: fastq::Reader<File>)
-where S: Clone + Ord + PartialEq + Debug {
+where S: Clone + Ord + PartialEq + Debug + Sync + Send {
+    info!("Starting Multi-threaded Mapping");
+    let (tx, rx) = mpsc::channel();
+    let atomic_reader = Arc::new(Mutex::new(reader.records()));
+    let atomic_counter = Arc::new(AtomicUsize::new(0));
+    let atomic_mapped_counter = Arc::new(AtomicUsize::new(0));
 
-    let mut reads_counter = 0;
-    for result in reader.records() {
-        // obtain record or fail with error
-        let record = result.unwrap();
-        reads_counter += 1;
+    info!("Spawning {} threads for Mapping.", work_queue::MAX_WORKER);
+    crossbeam::scope(|scope| {
+        for _ in 0 .. work_queue::MAX_WORKER {
+            let tx = tx.clone();
+            let reader = Arc::clone(&atomic_reader);
+            let atomic_counter = Arc::clone(&atomic_counter);
+            let atomic_mapped_counter = Arc::clone(&atomic_mapped_counter);
 
-        let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
+            scope.spawn(move || {
+                loop {
+                    // If work is available, do that work.
+                    match work_queue::get_next_record(&reader) {
+                        Some(result_record) => {
+                            let record = match result_record {
+                                Ok(record) => record,
+                                Err(err) => panic!("Error {:?} in reading fastq", err),
+                            };
 
-        let mut eq_class: Vec<S> = Vec::new();
-        for kmer in seqs.iter_kmers() {
-            //let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
-            //    Some(links) => links,
-            //    None => (std::usize::MAX, Dir::Right, false),
-            //};
-            //if nid != std::usize::MAX {
-            //    let labels = dbg.get_node(nid).data();
-            //    eq_class.extend(labels.clone().iter());
-            //    pdqsort::sort(&mut eq_class);
-            //    eq_class.dedup();
-            //}
-            let maybe_data = phf.get(&kmer);
-            match maybe_data {
-                Some((_, color)) => {
-                    let labels = eq_classes[*color as usize].clone();
-                    eq_class.extend(labels) ;
-                    pdqsort::sort(&mut eq_class);
-                    eq_class.dedup();
-                },
-                None => (),
-            }
-            println!("{:?}", eq_class);
-        }
+                            let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
+                            let eq_class = work_queue::map(seqs, dbg, eq_classes);
 
-        if reads_counter % 100000 == 0 {
-            print!("\rDone Mapping {} reads", reads_counter);
-            io::stdout().flush().ok().expect("Could not flush stdout");
-        }
-        //println!("{:?} -> {:?}", record.id(), eq_class);
+                            let current_count = atomic_counter.fetch_add(1, Ordering::SeqCst);
+                            if eq_class.len() > 0 {
+                                atomic_mapped_counter.fetch_add(1, Ordering::SeqCst);
+                            }
+
+                            if current_count % 100000 == 0 {
+                                let mapped_counter = atomic_mapped_counter.load(Ordering::Relaxed);
+                                print!("\rDone Mapping {} reads w/ Rate: {}",
+                                       current_count, mapped_counter as f32 * 100.0 / current_count as f32);
+                                io::stdout().flush().ok().expect("Could not flush stdout");
+                            }
+
+                            tx.send(true).expect("Could not send data!");
+                        },
+                        None => { break; },
+                    }; //end-match
+                } // end loop
+            }); //end-scope
+        } // end-for
+    }); //end cros-beam
+
+    drop(tx);
+    for eq_class in rx.iter() {
+        //eprintln!("{:?} -> {:?}", record.id(), eq_class);
     }
+
     println!();
+    info!("Done Mapping Reads");
 }
 
 
@@ -364,14 +380,15 @@ fn main() {
             utils::read_obj(index_file);
 
         let ref_index = input_dump.expect("Can't read the index");
+        info!("Done Reading index");
 
         // obtain reader or fail with error (via the unwrap method)
         let reads_file = matches.value_of("reads").unwrap();
         info!("Path for Reads FASTQ: {}\n\n", reads_file);
 
         let reads = fastq::Reader::from_file(reads_file).unwrap();
-        process_reads(ref_index.get_phf(),
-                      /*ref_index.get_dbg(),*/
+        process_reads(//ref_index.get_phf(),
+                      ref_index.get_dbg(),
                       ref_index.get_eq_classes(),
                       reads);
 

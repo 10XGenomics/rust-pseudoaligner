@@ -10,11 +10,11 @@ use std::boxed::Box;
 use std::path::{Path};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter};
-
+use std::marker;
 
 //use bincode;
 use bincode;
-use boomphf;
+//use boomphf;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 use debruijn::graph::DebruijnGraph;
@@ -28,15 +28,16 @@ use flate2::read::MultiGzDecoder;
 pub struct Index<K, E, D>
 where K:Hash, D: Eq + Hash {
     dbg: DebruijnGraph<K, EqClassIdType>,
-    phf: boomphf::BoomHashMap2<K, E, EqClassIdType>,
+    //phf: boomphf::BoomHashMap2<K, E, EqClassIdType>,
     eqclasses: Vec<Vec<D>>,
+    phantom: marker::PhantomData<E>,
 }
 
 impl<K:Hash, E, D> Index<K, E, D>
 where K:Hash, D: Clone + Debug + Eq + Hash {
-    fn new(dbg: DebruijnGraph<K, EqClassIdType>,
-               phf: boomphf::BoomHashMap2<K, E, EqClassIdType>,
-               eqclasses: HashMap<Vec<D>, EqClassIdType>) -> Index<K, E, D>{
+    pub fn new(dbg: DebruijnGraph<K, EqClassIdType>,
+           //phf: boomphf::BoomHashMap2<K, E, EqClassIdType>,
+           eqclasses: HashMap<Vec<D>, EqClassIdType>) -> Index<K, E, D>{
 
         let hash_len = eqclasses.len();
         let mut eqclasses_vec: Vec<Vec<D>> = Vec::new();
@@ -50,16 +51,17 @@ where K:Hash, D: Clone + Debug + Eq + Hash {
 
         Index{
             dbg: dbg,
-            phf: phf,
+            //phf: phf,
+            phantom: marker::PhantomData,
             eqclasses: eqclasses_vec,
         }
     }
 
-    pub fn get_phf(&self) -> &boomphf::BoomHashMap2<K, E, EqClassIdType>{
-        &self.phf
-    }
+    //pub fn get_phf(&self) -> &boomphf::BoomHashMap2<K, E, EqClassIdType>{
+    //    &self.phf
+    //}
 
-    fn get_dbg(&self) -> &DebruijnGraph<K, EqClassIdType>{
+    pub fn get_dbg(&self) -> &DebruijnGraph<K, EqClassIdType>{
         &self.dbg
     }
 
