@@ -10,10 +10,6 @@ extern crate flate2;
 extern crate num;
 extern crate failure;
 extern crate crossbeam;
-extern crate rand;
-
-#[macro_use]
-extern crate smallvec;
 
 #[macro_use]
 extern crate log;
@@ -260,7 +256,7 @@ fn process_reads<S>(//phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>
                     dbg: &DebruijnGraph<KmerType, EqClassIdType>,
                     eq_classes: &Vec<Vec<S>>,
                     reader: fastq::Reader<File>)
-where S: Clone + Ord + PartialEq + Debug + Sync + Send {
+where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     info!("Starting Multi-threaded Mapping");
     let (tx, rx) = mpsc::channel();
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
@@ -300,19 +296,40 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send {
                                 io::stdout().flush().ok().expect("Could not flush stdout");
                             }
 
-                            tx.send(true).expect("Could not send data!");
+                            tx.send(Some(eq_class)).expect("Could not send data!");
                         },
                         None => { break; },
                     }; //end-match
                 } // end loop
+
+                // send None to tell receiver that the thread exited
+                tx.send(None).expect("Could not send data!");
             }); //end-scope
         } // end-for
+
+        let mut dead_thread_count = 0;
+        for eq_class in rx.iter() {
+            match eq_class {
+                None => {
+                    dead_thread_count += 1;
+                    if dead_thread_count == work_queue::MAX_WORKER {
+                        drop(tx);
+                        break;
+                    }
+                },
+                Some(eq_class) => eprintln!("{:?}", eq_class),
+            }
+        }
     }); //end cros-beam
 
-    drop(tx);
+    //consume whatever is remaining
     for eq_class in rx.iter() {
-        //eprintln!("{:?} -> {:?}", record.id(), eq_class);
+        match eq_class {
+            None => (),
+            Some(eq_class) => eprintln!("{:?}", eq_class),
+        }
     }
+
 
     println!();
     info!("Done Mapping Reads");

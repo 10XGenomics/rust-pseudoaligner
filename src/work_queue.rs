@@ -4,6 +4,7 @@ use std;
 use std::hash::Hash;
 use std::fmt::Debug;
 use std::sync::{Mutex, Arc};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use KmerType;
@@ -12,7 +13,7 @@ use REPORT_ALL_KMER;
 use MEM_SIZE;
 
 use boomphf;
-use pdqsort;
+//use pdqsort;
 use debruijn::*;
 use debruijn::graph::*;
 use debruijn::filter::*;
@@ -21,7 +22,7 @@ use debruijn::compression::*;
 use docks::{L, DocksUhs, generate_msps};
 use debruijn::dna_string::{DnaString, DnaStringSlice};
 
-pub const MAX_WORKER: usize = 20;
+pub const MAX_WORKER: usize = 8;
 
 pub struct WorkQueue{
     head : AtomicUsize,
@@ -130,22 +131,37 @@ where R: std::io::Read{
 pub fn map<S>(seqs: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
               eq_classes: &Vec<Vec<S>>) -> Vec<S>
-where S: Ord + PartialEq + Clone {
-    let mut eq_class: Vec<S> = Vec::new();
+where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
+    let mut all_colors: Vec<Vec<S>> = Vec::new();
 
     for kmer in seqs.iter_kmers() {
         let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
             Some(links) => links,
-            None => (std::usize::MAX, Dir::Right, false),
+            None => {
+                //match dbg.find_link(kmer, Dir::Left) {
+                //    Some(links) => links,
+                //    None => (std::usize::MAX, Dir::Left, true),
+                //}
+                (std::usize::MAX, Dir::Left, true)
+            },
         };
 
         if nid != std::usize::MAX {
-            let eq_id = *dbg.get_node(nid).data();
-            let labels = &eq_classes[eq_id as usize];
-            eq_class.extend(labels.clone().into_iter());
-            pdqsort::sort(&mut eq_class);
-            eq_class.dedup();
+            // get the node
+            let node = dbg.get_node(nid);
+
+            // get the sequnece of the node
+            let seq = node.sequence();
+            let seq_len = seq.len();
+
+            // extract colors
+            let eq_id = node.data();
+            let colors = &eq_classes[*eq_id as usize];
+
+            all_colors.push(colors.clone());
+            //println!("{:?}, {:?}, {:?}", seq, kmer, colors);
         }
+
         //let maybe_data = phf.get(&kmer);
         //match maybe_data {
         //    Some((_, color)) => {
@@ -157,7 +173,25 @@ where S: Ord + PartialEq + Clone {
         //    None => (),
         //}
         //println!("{:?}", eq_class);
-    }
+    } // end-for
 
-    eq_class
+    let total_classes = all_colors.len();
+    if total_classes == 0 {
+        Vec::new()
+    }
+    else{
+        let elem: Vec<S> = all_colors.pop().unwrap();
+        if total_classes == 1 {
+            return elem
+        }
+
+        let mut eq_class_set: HashSet<S> = elem.into_iter().collect();
+        for colors in all_colors {
+            let colors_set: HashSet<S> = colors.into_iter().collect();
+            eq_class_set = eq_class_set.intersection(&colors_set).cloned().collect();
+        }
+
+        let eq_class: Vec<S> = eq_class_set.into_iter().collect();
+        eq_class
+    }
 }
