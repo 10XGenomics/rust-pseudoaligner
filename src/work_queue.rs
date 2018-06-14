@@ -128,26 +128,27 @@ where R: std::io::Read{
     lock.next()
 }
 
-pub fn map<S>(read: DnaString,
+pub fn map<S>(read_seq: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
               eq_classes: &Vec<Vec<S>>) -> Vec<S>
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut all_colors: Vec<Vec<S>> = Vec::new();
-    let mut read_kmer_iterator = read.iter_kmers();
-    let mut kmer = read_kmer_iterator.next().unwrap();
-    let mut get_next_kmer: bool;
+    let read_length = read_seq.len();
 
-    loop {
-        get_next_kmer = true;
+    let mut kmer_pos = 0;
+    let mut kmer = read_seq.first_kmer();
+    let kmer_length = KmerType::k();
+    let last_kmer_pos = read_length - kmer_length;
 
-        let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
-            Some(links) => links,
+    while kmer_pos <= last_kmer_pos {
+        let nid = match dbg.find_link(kmer, Dir::Right){
+            Some((nid, _, _)) => nid,
             None => {
                 //match dbg.find_link(kmer, Dir::Left) {
                 //    Some(links) => links,
                 //    None => (std::usize::MAX, Dir::Left, true),
                 //}
-                (std::usize::MAX, Dir::Left, true)
+                std::usize::MAX
             },
         };
 
@@ -155,36 +156,40 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             // get the node
             let ref_node = dbg.get_node(nid);
             let ref_seq_slice = ref_node.sequence();
+            let ref_length = ref_seq_slice.len();
 
-            let mut ref_kmer = ref_seq_slice.get_kmer(0);
+            // useless sanity check but keeping it
+            let ref_kmer = ref_seq_slice.first_kmer();
             if kmer != ref_kmer {
                 panic!("{:?} should be equal to {:?}",
                        kmer, ref_kmer);
             }
 
-            for i in 1..ref_seq_slice.len()-KmerType::k() {
-                ref_kmer = ref_seq_slice.get_kmer(i);
-                let maybe_kmer = read_kmer_iterator.next();
+            let read_offset = kmer_pos + kmer_length;
+            let remaining_read = read_length - read_offset;
+            // TODO: verify if it's always going to match at the start
+            // of the node
+            let informative_ref = ref_length - kmer_length;
+            let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
 
-                match maybe_kmer {
-                    None => break,
-                    Some(curr_kmer) => {
-                        kmer = curr_kmer;
+            for idx in 0..max_matchable_pos {
+                let ref_pos = kmer_length + idx;
+                let read_pos = read_offset + idx;
 
-                        if kmer != ref_kmer {
-                            get_next_kmer = false;
-                            break;
-                        }
-                    }, //end-Some
-                }//end-match
-            }//end-for
+                // compare base by base
+                if ref_seq_slice.get(ref_pos) != read_seq.get(read_pos) {
+                    break;
+                }
+                kmer_pos += 1;
+            }
 
             // extract colors
             let eq_id = ref_node.data();
             let colors = &eq_classes[*eq_id as usize];
 
             all_colors.push(colors.clone());
-            //println!("{:?}, {:?}, {:?}", ref_seq_slice, kmer, colors);
+
+            println!("{:?}, {:?}, {:?}", ref_seq_slice, ref_node, colors);
         } // end-if
 
         //let maybe_data = phf.get(&kmer);
@@ -199,13 +204,12 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
         //}
         //println!("{:?}", eq_class);
 
-        if get_next_kmer{
-            kmer = match read_kmer_iterator.next() {
-                None => break,
-                Some(kmer) => kmer,
-            };
+        kmer_pos += 1;
+        if kmer_pos > last_kmer_pos {
+            break;
         }
-    } // end-loop
+        kmer = read_seq.get_kmer(kmer_pos);
+    }// end-loop
 
     // Take the intersection of the sets
     let total_classes = all_colors.len();
