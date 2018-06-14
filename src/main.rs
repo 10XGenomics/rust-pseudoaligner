@@ -32,7 +32,6 @@ use std::hash::Hash;
 
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use num::One;
 use num::Num;
@@ -122,6 +121,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     let (tx, rx) = mpsc::channel();
     let num_seqs = seqs.len();
     let queue = Arc::new(work_queue::WorkQueue::new());
+    let mut buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
 
     info!("Spawning {} threads for Bucketing.", work_queue::MAX_WORKER);
     crossbeam::scope(|scope| {
@@ -149,25 +149,24 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
                 } // end loop
             });
         }
-    });
 
-    let mut missed_bases_counter: usize = 0;
-    let mut buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
+        let mut missed_bases_counter: usize = 0;
 
-    for _ in 0..num_seqs {
-        let (seq_data, head) = rx.recv().unwrap();
-        let (bucket_slices, missed_bases) = seq_data;
+        for _ in 0..num_seqs {
+            let (seq_data, head) = rx.recv().unwrap();
+            let (bucket_slices, missed_bases) = seq_data;
 
-        let bit_head: S = num::cast(head).unwrap();
-        missed_bases_counter += missed_bases;
-        for (bucket_id, slices) in bucket_slices {
-            buckets[bucket_id as usize].push((slices, Exts::empty(), bit_head.clone()));
+            let bit_head: S = num::cast(head).unwrap();
+            missed_bases_counter += missed_bases;
+            for (bucket_id, slices) in bucket_slices {
+                buckets[bucket_id as usize].push((slices, Exts::empty(), bit_head.clone()));
+            }
         }
-    }
 
-    println!();
-    info!("Bucketing successfully finished.");
-    warn!("Missed total {} bases", missed_bases_counter);
+        println!();
+        info!("Bucketing successfully finished.");
+        warn!("Missed total {} bases", missed_bases_counter);
+    });
 
     // separating small and big buckets since call to Boomphf new is expensive
     let mut big_buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = Vec::new();
@@ -230,12 +229,9 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
             }
         });
 
-        drop(tx);
-        for item in rx.iter() {
-            match item {
-                None => (),
-                Some(dbg) => dbgs.push(dbg),
-            };
+        for _ in 0..num_buckets {
+            let dbg = rx.recv().unwrap();
+            dbgs.push(dbg.unwrap());
         }
     }
 
@@ -260,16 +256,12 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     info!("Starting Multi-threaded Mapping");
     let (tx, rx) = mpsc::channel();
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
-    let atomic_counter = Arc::new(AtomicUsize::new(0));
-    let atomic_mapped_counter = Arc::new(AtomicUsize::new(0));
 
     info!("Spawning {} threads for Mapping.", work_queue::MAX_WORKER);
     crossbeam::scope(|scope| {
         for _ in 0 .. work_queue::MAX_WORKER {
             let tx = tx.clone();
             let reader = Arc::clone(&atomic_reader);
-            let atomic_counter = Arc::clone(&atomic_counter);
-            let atomic_mapped_counter = Arc::clone(&atomic_mapped_counter);
 
             scope.spawn(move || {
                 loop {
@@ -284,18 +276,6 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
                             let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
                             let eq_class = work_queue::map(seqs, dbg, eq_classes);
 
-                            let current_count = atomic_counter.fetch_add(1, Ordering::SeqCst);
-                            if eq_class.len() > 0 {
-                                atomic_mapped_counter.fetch_add(1, Ordering::SeqCst);
-                            }
-
-                            if current_count % 100000 == 0 {
-                                let mapped_counter = atomic_mapped_counter.load(Ordering::Relaxed);
-                                print!("\rDone Mapping {} reads w/ Rate: {}",
-                                       current_count, mapped_counter as f32 * 100.0 / current_count as f32);
-                                io::stdout().flush().ok().expect("Could not flush stdout");
-                            }
-
                             tx.send(Some(eq_class)).expect("Could not send data!");
                         },
                         None => { break; },
@@ -307,29 +287,45 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             }); //end-scope
         } // end-for
 
+        let mut read_counter: usize = 0;
+        let mut mapped_read_counter: usize = 0;
         let mut dead_thread_count = 0;
+
         for eq_class in rx.iter() {
             match eq_class {
                 None => {
                     dead_thread_count += 1;
                     if dead_thread_count == work_queue::MAX_WORKER {
                         drop(tx);
+                        // can't continue with a flag check
+                        // weird Rusty way !
+                        // Consume whatever is remaining
+                        // Not worrying about counters; hunch is their
+                        // should be less
+                        for eq_class in rx.iter() {
+                            eq_class.map_or((), |eq_class| eprintln!("{:?}", eq_class));
+                        }
                         break;
                     }
                 },
-                Some(eq_class) => eprintln!("{:?}", eq_class),
-            }
-        }
-    }); //end cros-beam
+                Some(eq_class) => {
+                    read_counter += 1;
+                    if eq_class.len() > 0 {
+                        mapped_read_counter += 1;
+                    }
 
-    //consume whatever is remaining
-    for eq_class in rx.iter() {
-        match eq_class {
-            None => (),
-            Some(eq_class) => eprintln!("{:?}", eq_class),
-        }
-    }
+                    if read_counter % 100000 == 0 {
+                        let frac_mapped = mapped_read_counter as f32 * 100.0 / read_counter as f32;
+                        print!("\rDone Mapping {} reads w/ Rate: {}",
+                               read_counter, frac_mapped);
+                        io::stdout().flush().ok().expect("Could not flush stdout");
+                    }
 
+                    eprintln!("{:?}", eq_class);
+                } // end-Some
+            } // end-match
+        } // end-for
+    }); //end crossbeam
 
     println!();
     info!("Done Mapping Reads");

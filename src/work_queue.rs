@@ -128,13 +128,18 @@ where R: std::io::Read{
     lock.next()
 }
 
-pub fn map<S>(seqs: DnaString,
+pub fn map<S>(read: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
               eq_classes: &Vec<Vec<S>>) -> Vec<S>
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut all_colors: Vec<Vec<S>> = Vec::new();
+    let mut read_kmer_iterator = read.iter_kmers();
+    let mut kmer = read_kmer_iterator.next().unwrap();
+    let mut get_next_kmer: bool;
 
-    for kmer in seqs.iter_kmers() {
+    loop {
+        get_next_kmer = true;
+
         let (nid, _, _) = match dbg.find_link(kmer, Dir::Right){
             Some(links) => links,
             None => {
@@ -148,19 +153,39 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
 
         if nid != std::usize::MAX {
             // get the node
-            let node = dbg.get_node(nid);
+            let ref_node = dbg.get_node(nid);
+            let ref_seq_slice = ref_node.sequence();
 
-            // get the sequnece of the node
-            let seq = node.sequence();
-            let seq_len = seq.len();
+            let mut ref_kmer = ref_seq_slice.get_kmer(0);
+            if kmer != ref_kmer {
+                panic!("{:?} should be equal to {:?}",
+                       kmer, ref_kmer);
+            }
+
+            for i in 1..ref_seq_slice.len()-KmerType::k() {
+                ref_kmer = ref_seq_slice.get_kmer(i);
+                let maybe_kmer = read_kmer_iterator.next();
+
+                match maybe_kmer {
+                    None => break,
+                    Some(curr_kmer) => {
+                        kmer = curr_kmer;
+
+                        if kmer != ref_kmer {
+                            get_next_kmer = false;
+                            break;
+                        }
+                    }, //end-Some
+                }//end-match
+            }//end-for
 
             // extract colors
-            let eq_id = node.data();
+            let eq_id = ref_node.data();
             let colors = &eq_classes[*eq_id as usize];
 
             all_colors.push(colors.clone());
-            //println!("{:?}, {:?}, {:?}", seq, kmer, colors);
-        }
+            //println!("{:?}, {:?}, {:?}", ref_seq_slice, kmer, colors);
+        } // end-if
 
         //let maybe_data = phf.get(&kmer);
         //match maybe_data {
@@ -173,8 +198,16 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
         //    None => (),
         //}
         //println!("{:?}", eq_class);
-    } // end-for
 
+        if get_next_kmer{
+            kmer = match read_kmer_iterator.next() {
+                None => break,
+                Some(kmer) => kmer,
+            };
+        }
+    } // end-loop
+
+    // Take the intersection of the sets
     let total_classes = all_colors.len();
     if total_classes == 0 {
         Vec::new()
