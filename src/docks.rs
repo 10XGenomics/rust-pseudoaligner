@@ -6,17 +6,11 @@ use debruijn::{Vmer, Kmer, kmer};
 use debruijn::dna_string::DnaString;
 
 use std::fs::File;
-use std::collections::HashMap;
 use std::io::{BufReader, BufRead};
 
+use config::{DocksUhs, DOCKS_FILE, K, L, Minimizer};
+
 // Docks Universal hitting sets
-pub type DocksUhs = HashMap<String, u16>;
-pub type Minimizer = kmer::Kmer8;
-
-const K: usize = 8;
-pub const L: usize = 40;
-const DOCKS_FILE: &'static str = "res_8_40_4_0.txt";
-
 pub fn read_uhs() -> DocksUhs {
     info!("Starting reading Docks' Universal Hitting Set");
     let input = match File::open(DOCKS_FILE) {

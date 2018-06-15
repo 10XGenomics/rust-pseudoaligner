@@ -20,6 +20,7 @@ extern crate serde;
 mod utils;
 mod docks;
 mod work_queue;
+mod config;
 
 // Import some modules
 use std::io;
@@ -39,22 +40,15 @@ use num::NumCast;
 use clap::{Arg, App};
 use serde::Serialize;
 use bio::io::{fasta, fastq};
+use serde::de::DeserializeOwned;
 
+use debruijn::{Exts};
 use debruijn::dna_string::*;
-use debruijn::{Exts, kmer};
-use debruijn::filter::EqClassIdType;
 use debruijn::graph::DebruijnGraph;
+use debruijn::filter::EqClassIdType;
 
-const MIN_KMERS: usize = 1;
-const STRANDED: bool = true;
-const MEM_SIZE: usize = 1;
-const REPORT_ALL_KMER: bool = false;
-const BUCKET_SIZE_THRESHOLD: usize = 500;
-const U8_MAX: usize = u8::max_value() as usize;
-const U16_MAX: usize = u16::max_value() as usize;
-const U32_MAX: usize = u32::max_value() as usize;
-
-pub type KmerType = kmer::Kmer40;
+use config::{U8_MAX, U16_MAX, U32_MAX, MAX_WORKER, BUCKET_SIZE_THRESHOLD, MIN_KMERS};
+use config::{DocksUhs, KmerType};
 
 fn read_fasta(reader: fasta::Reader<File>)
               -> Vec<Vec<DnaString>> {
@@ -88,7 +82,7 @@ fn read_fasta(reader: fasta::Reader<File>)
 }
 
 fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
-                         uhs: docks::DocksUhs) {
+                         uhs: DocksUhs) {
     let seqs_len = seqs.len();
 
     // Based on the number of sequences chose the right primary datatype
@@ -115,17 +109,18 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
 }
 
 fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
-                        uhs: &docks::DocksUhs, _seq_id: S)
-where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Send + Sync + Num + NumCast{
+                        uhs: &DocksUhs, _seq_id: S)
+where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
+    + Send + Sync + Num + NumCast + DeserializeOwned {
     info!("Starting Bucketing");
     let (tx, rx) = mpsc::channel();
     let num_seqs = seqs.len();
     let queue = Arc::new(work_queue::WorkQueue::new());
     let mut buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
 
-    info!("Spawning {} threads for Bucketing.", work_queue::MAX_WORKER);
+    info!("Spawning {} threads for Bucketing.", MAX_WORKER);
     crossbeam::scope(|scope| {
-        for _ in 0 .. work_queue::MAX_WORKER {
+        for _ in 0 .. MAX_WORKER {
             let tx = tx.clone();
             let queue = Arc::clone(&queue);
 
@@ -199,9 +194,9 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
         let atomic_buckets = Arc::new(Mutex::new(big_buckets));
         let queue = Arc::new(work_queue::WorkQueue::new());
 
-        info!("Spawning {} threads for Analyzing.", work_queue::MAX_WORKER);
+        info!("Spawning {} threads for Analyzing.", MAX_WORKER);
         crossbeam::scope(|scope| {
-            for _ in 0 .. work_queue::MAX_WORKER {
+            for _ in 0 .. MAX_WORKER {
                 let tx = tx.clone();
                 let queue = Arc::clone(&queue);
                 let bucket_ref = Arc::clone(&atomic_buckets);
@@ -241,11 +236,11 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S> + Sen
     //println!("{:?}", summarizer);
 
     let full_dbg = work_queue::merge_graphs(dbgs);
-    let eq_classes = Arc::try_unwrap(summarizer).unwrap().get_eq_classes().into_inner().expect("Can't unwrap eqclass");
+    let eq_classes = Arc::try_unwrap(summarizer).unwrap().get_eq_classes();
 
-    let ref_index: utils::Index<KmerType, Exts, S> = utils::Index::new(full_dbg, eq_classes);
-    info!("Dumping index into File: {:?}", index_file);
-    utils::write_obj(&ref_index, index_file).expect("Can't dump the index");
+    utils::Index::dump(full_dbg,
+                       eq_classes.into_inner().expect("Can't unwrap eqclass"),
+                       index_file);
 }
 
 fn process_reads<S>(//phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
@@ -257,9 +252,9 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let (tx, rx) = mpsc::channel();
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
 
-    info!("Spawning {} threads for Mapping.", work_queue::MAX_WORKER);
+    info!("Spawning {} threads for Mapping.", MAX_WORKER);
     crossbeam::scope(|scope| {
-        for _ in 0 .. work_queue::MAX_WORKER {
+        for _ in 0 .. MAX_WORKER {
             let tx = tx.clone();
             let reader = Arc::clone(&atomic_reader);
 
@@ -295,7 +290,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             match eq_class {
                 None => {
                     dead_thread_count += 1;
-                    if dead_thread_count == work_queue::MAX_WORKER {
+                    if dead_thread_count == MAX_WORKER {
                         drop(tx);
                         // can't continue with a flag check
                         // weird Rusty way !
@@ -386,13 +381,8 @@ fn main() {
     else{
         // import the index if already present.
         info!("Reading index from File: {:?}", index_file);
-        // TODO: use the right variable type for index, currently hardcoded
-        warn!("INDEX TYPE HARDCODED TO u32");
-        let input_dump: Result<utils::Index<KmerType, Exts, u32>,
-                               Box<bincode::ErrorKind>> =
-            utils::read_obj(index_file);
-
-        let ref_index = input_dump.expect("Can't read the index");
+        warn!("HARDCODED INDEX TO U32");
+        let ref_index: utils::Index<KmerType, u32> = utils::Index::read(index_file);
         info!("Done Reading index");
 
         // obtain reader or fail with error (via the unwrap method)

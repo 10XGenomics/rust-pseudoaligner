@@ -7,10 +7,6 @@ use std::sync::{Mutex, Arc};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use KmerType;
-use STRANDED;
-use REPORT_ALL_KMER;
-use MEM_SIZE;
 
 use boomphf;
 //use pdqsort;
@@ -19,10 +15,9 @@ use debruijn::graph::*;
 use debruijn::filter::*;
 use bio::io::{fastq};
 use debruijn::compression::*;
-use docks::{L, DocksUhs, generate_msps};
+use docks::generate_msps;
 use debruijn::dna_string::{DnaString, DnaStringSlice};
-
-pub const MAX_WORKER: usize = 8;
+use config::{KmerType, STRANDED, REPORT_ALL_KMER, MEM_SIZE, L, DocksUhs};
 
 pub struct WorkQueue{
     head : AtomicUsize,
