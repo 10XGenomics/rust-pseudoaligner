@@ -3,6 +3,7 @@
 //! Utility methods.
 
 use std::fs;
+use std::mem;
 use std::fs::File;
 use std::hash::Hash;
 use std::fmt::Debug;
@@ -21,23 +22,21 @@ use debruijn::graph::DebruijnGraph;
 use debruijn::filter::EqClassIdType;
 use bincode::{serialize_into, deserialize_from};
 
-use num;
-use num::NumCast;
 use failure::Error;
 use flate2::read::MultiGzDecoder;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Index<K, D>
 where K:Hash + Serialize, D: Eq + Hash + Serialize {
     eqclasses: Vec<Vec<D>>,
     dbg: DebruijnGraph<K, EqClassIdType>,
-    left_phf: boomphf::BoomHashMap<K, EqClassIdType>,
-    right_phf: boomphf::BoomHashMap<K, EqClassIdType>,
+    left_phf: boomphf::BoomHashMap<K, usize>,
+    right_phf: boomphf::BoomHashMap<K, usize>,
 }
 
 impl<K, D> Index<K, D>
 where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
-      D: Clone + Debug + Eq + Hash + Serialize + NumCast + DeserializeOwned{
+      D: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned{
     pub fn dump(dbg: DebruijnGraph<K, EqClassIdType>,
                 eqclasses: HashMap<Vec<D>, EqClassIdType>,
                 index_path: &str) {
@@ -57,6 +56,8 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
             Err(err) => warn!("{:?}", err),
             Ok(()) => info!("Creating folder {:?}", index_path),
         }
+        let data_type: usize = mem::size_of::<D>();
+        write_obj(&data_type, index_path.to_owned() + "/type.bin").expect("Can't dump data type");
 
         let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
         write_obj(&eqclasses_vec, eqclass_file_name).expect("Can't dump classes");
@@ -65,29 +66,24 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
         write_obj(&dbg, dbg_file_name).expect("Can't dump debruijn graph");
 
         let mut left_kmers = Vec::new();
-        //let mut right_kmers = Vec::new();
+        let mut right_kmers = Vec::new();
         let mut node_ids = Vec::new();
 
         for node in dbg.iter_nodes() {
-            //let (left_kmer, right_kmer): (K, K) = node.sequence().both_term_kmer();
-            let left_kmer: K = node.sequence().first_kmer();
+            let (left_kmer, right_kmer): (K, K) = node.sequence().both_term_kmer();
+            //let left_kmer: K = node.sequence().first_kmer();
             left_kmers.push(left_kmer);
-            //right_kmers.push(right_kmer);
+            right_kmers.push(right_kmer);
             node_ids.push(node.node_id);
         }
 
-        { // Clearing after writing
-            let left_phf = boomphf::BoomHashMap::new(left_kmers, node_ids);
-            let left_phf_file_name = index_path.to_owned() + "/left_phf.bin";
-            write_obj(&left_phf, left_phf_file_name).expect("Can't dump left phf");
-        }
+        let left_phf = boomphf::BoomHashMap::new(left_kmers, node_ids.clone());
+        let left_phf_file_name = index_path.to_owned() + "/left_phf.bin";
+        write_obj(&left_phf, left_phf_file_name).expect("Can't dump left phf");
 
-        //let right_phf = boomphf::BoomHashMap::new(right_kmers, node_ids);
-        //let right_phf_file_name = index_path.to_owned() + "/right_phf.bin";
-        //write_obj(&right_phf, right_phf_file_name).expect("Can't dump right phf");
-
-        let data_type: D = num::cast(0).unwrap();
-        write_obj(&data_type, index_path.to_owned() + "/type.bin").expect("Can't dump data type");
+        let right_phf = boomphf::BoomHashMap::new(right_kmers, node_ids);
+        let right_phf_file_name = index_path.to_owned() + "/right_phf.bin";
+        write_obj(&right_phf, right_phf_file_name).expect("Can't dump right phf");
     }
 
     pub fn read(index_path: &str) -> Index<K, D> {
@@ -96,8 +92,6 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
             Err(_) => panic!("{:?} directory not found", index_path),
             Ok(_) => info!("Reading index from folder: {:?}", index_path),
         }
-        let _data_type: D;
-        _data_type = read_obj(index_path.to_owned() + "/type.bin").expect("Can't read data type");
 
         let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
         let eq_classes: Vec<Vec<D>> = read_obj(eqclass_file_name).expect("Can't read classes");
@@ -119,11 +113,11 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
         }
     }
 
-    pub fn _get_left_phf(&self) -> &boomphf::BoomHashMap<K, EqClassIdType>{
+    pub fn get_left_phf(&self) -> &boomphf::BoomHashMap<K, usize>{
         &self.left_phf
     }
 
-    pub fn _get_right_phf(&self) -> &boomphf::BoomHashMap<K, EqClassIdType>{
+    pub fn get_right_phf(&self) -> &boomphf::BoomHashMap<K, usize>{
         &self.right_phf
     }
 
@@ -137,7 +131,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
 }
 
 /// Open a (possibly gzipped) file into a BufReader.
-fn open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
+fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
     let r = File::open(p.as_ref())?;
 
     if p.as_ref().extension().unwrap() == "gz" {
@@ -161,7 +155,7 @@ fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(g: &T, filename: P) -> Result
     serialize_into(&mut writer, &g)
 }
 
-fn read_obj<T: DeserializeOwned, P: AsRef<Path> + Debug>(filename: P) -> Result<T, bincode::Error> {
+pub fn read_obj<T: DeserializeOwned, P: AsRef<Path> + Debug>(filename: P) -> Result<T, bincode::Error> {
     let f = match File::open(&filename) {
         Err(err) => panic!("couldn't open file {:?}: {}", filename, err),
         Ok(f) => f,

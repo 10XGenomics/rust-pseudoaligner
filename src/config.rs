@@ -17,15 +17,15 @@ pub const MAX_WORKER: usize = 8;
 
 //DOCKS configs
 pub type DocksUhs = HashMap<String, u16>;
-pub const DOCKS_FILE: &'static str = "res_8_40_4_0.txt";
+pub const DOCKS_FILE: &'static str = "res_6_30_4_0.txt";
 
 //pub const K: usize = Minimizer::k();
 //pub const L: usize = KmerType::k();
 // NOTE: Rust don't allow static from function
 // Remember to change Minimizer and KmerType if
 // you are changing K, L
-pub type Minimizer = kmer::Kmer8;
-pub const K: usize = 8;
+pub type Minimizer = kmer::Kmer6;
+pub const K: usize = 6;
 
-pub type KmerType = kmer::Kmer40;
-pub const L: usize = 40;
+pub type KmerType = kmer::Kmer30;
+pub const L: usize = 30;

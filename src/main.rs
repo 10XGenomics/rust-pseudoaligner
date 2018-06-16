@@ -44,8 +44,6 @@ use serde::de::DeserializeOwned;
 
 use debruijn::{Exts};
 use debruijn::dna_string::*;
-use debruijn::graph::DebruijnGraph;
-use debruijn::filter::EqClassIdType;
 
 use config::{U8_MAX, U16_MAX, U32_MAX, MAX_WORKER, BUCKET_SIZE_THRESHOLD, MIN_KMERS};
 use config::{DocksUhs, KmerType};
@@ -120,6 +118,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
 
     info!("Spawning {} threads for Bucketing.", MAX_WORKER);
     crossbeam::scope(|scope| {
+
         for _ in 0 .. MAX_WORKER {
             let tx = tx.clone();
             let queue = Arc::clone(&queue);
@@ -136,7 +135,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
                     // If work is available, do that work.
                     match queue.get_work(seqs) {
                         Some((seq, head)) => {
-                            let thread_data = work_queue::run(seq, uhs);
+                            let thread_data =  work_queue::run(seq, uhs);
                             tx.send((thread_data, head)).expect("Could not send data!");
                           },
                         None => { break; },
@@ -243,14 +242,19 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
                        index_file);
 }
 
-fn process_reads<S>(//phf: &boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>,
-                    dbg: &DebruijnGraph<KmerType, EqClassIdType>,
-                    eq_classes: &Vec<Vec<S>>,
+fn process_reads<S>(index: utils::Index<KmerType, S>,
                     reader: fastq::Reader<File>)
-where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
+where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + DeserializeOwned {
+    info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
+
     let (tx, rx) = mpsc::channel();
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
+
+    let dbg = index.get_dbg();
+    let left_phf = index.get_left_phf();
+    let right_phf = index.get_right_phf();
+    let eq_classes = index.get_eq_classes();
 
     info!("Spawning {} threads for Mapping.", MAX_WORKER);
     crossbeam::scope(|scope| {
@@ -381,20 +385,32 @@ fn main() {
     else{
         // import the index if already present.
         info!("Reading index from File: {:?}", index_file);
-        warn!("HARDCODED INDEX TO U32");
-        let ref_index: utils::Index<KmerType, u32> = utils::Index::read(index_file);
-        info!("Done Reading index");
+        let data_type_file_name = index_file.to_owned() + "/type.bin";
+        let data_type: usize = utils::read_obj(data_type_file_name).expect("Can't read data type");
 
         // obtain reader or fail with error (via the unwrap method)
         let reads_file = matches.value_of("reads").unwrap();
         info!("Path for Reads FASTQ: {}\n\n", reads_file);
-
         let reads = fastq::Reader::from_file(reads_file).unwrap();
-        process_reads(//ref_index.get_phf(),
-                      ref_index.get_dbg(),
-                      ref_index.get_eq_classes(),
-                      reads);
 
+        match data_type {
+            1 => {
+                info!("Read u8 for eqclass data type");
+                let index = utils::Index::<KmerType, u8>::read(index_file);
+                process_reads(index, reads);
+            },
+            2 => {
+                info!("Read u16 for eqclass data type");
+                let index = utils::Index::<KmerType, u16>::read(index_file);
+                process_reads(index, reads);
+            },
+            4 => {
+                info!("Read u32 for eqclass data type");
+                let index = utils::Index::<KmerType, u32>::read(index_file);
+                process_reads(index, reads);
+            },
+            _ => panic!("read unidentified data type with size => {:?}", data_type),
+        };
     }
     info!("Finished Processing !")
 }

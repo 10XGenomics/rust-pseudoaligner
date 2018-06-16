@@ -67,8 +67,9 @@ pub fn run<'a>(contigs: &'a Vec<DnaString>, uhs: &DocksUhs)
             let msps = generate_msps( &seq, uhs );
             for msp in msps{
                 let bucket_id = msp.bucket();
-                if bucket_id > uhs.len() as u16{
-                    panic!("Small bucket size");
+                if bucket_id >= uhs.len() as u16{
+                    panic!("Bucket size: {:?} id: {:?} out of bound",
+                           uhs.len(), bucket_id);
                 }
 
                 let slice = seq.slice(msp.start(), msp.end());

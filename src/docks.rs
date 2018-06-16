@@ -2,7 +2,7 @@
 // Designing small universal k-mer hitting sets for improved analysis of high-throughput sequencing Yaron Orenstein et. al
 
 use debruijn::msp::MspInterval;
-use debruijn::{Vmer, Kmer, kmer};
+use debruijn::{Vmer, Kmer};
 use debruijn::dna_string::DnaString;
 
 use std::fs::File;
@@ -42,8 +42,11 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
 
     // lambda to get an index of a kmer in uhs
     let uhs_idx = | i: usize | {
-        let pi = seq.get_kmer::<kmer::Kmer8>(i);
-        uhs.get(&pi.to_string()).expect("Can't find kmer in uhs")
+        let pi = seq.get_kmer::<Minimizer>(i);
+        match uhs.get(&pi.to_string()) {
+            Some(minimizer) => minimizer,
+            None => panic!("Can't find kmer in uhs for {:?}", &pi.to_string()),
+        }
     };
 
     // lamnda to to get index of the minimum uhs
@@ -72,7 +75,10 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
             pos = pos + 1;
         }
 
-        min_pos.expect("Can't find a minimizer")
+        match min_pos{
+            None => panic!("Can't find a minimizer for {:?}", seq.slice(start, stop-1)),
+            Some(pos) => pos,
+        }
     };
 
     let seq_len = seq.len();
@@ -121,11 +127,3 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
 
     slices
 }
-
-
-//    let mut msps: Vec<(u16, Exts, DnaString)> = Vec::new();
-//        let seq_slice = &seq.to_bytes()[..];
-//        for msp in msp_parts {
-//            let v = DnaString::from_bytes(&seq_slice[(msp.start())..(msp.start() + msp.len())]);
-//            let exts = Exts::from_slice_bounds(&seq_slice, msp.start(), msp.len());
-//            msps.push((msp.bucket(), exts, v));
