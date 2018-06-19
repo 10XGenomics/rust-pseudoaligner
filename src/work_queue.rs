@@ -127,7 +127,9 @@ where R: std::io::Read{
 
 pub fn map<S>(read_seq: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
-              eq_classes: &Vec<Vec<S>>) -> Vec<S>
+              eq_classes: &Vec<Vec<S>>,
+              phf: &boomphf::BoomHashMap2<KmerType, usize, u32>)
+              -> Vec<S>
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut all_colors: Vec<Vec<S>> = Vec::new();
     let read_length = read_seq.len();
@@ -138,68 +140,40 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let last_kmer_pos = read_length - kmer_length;
 
     while kmer_pos <= last_kmer_pos {
-        let nid = match dbg.find_link(kmer, Dir::Right){
-            Some((nid, _, _)) => nid,
-            None => {
-                //match dbg.find_link(kmer, Dir::Left) {
-                //    Some(links) => links,
-                //    None => (std::usize::MAX, Dir::Left, true),
-                //}
-                std::usize::MAX
-            },
-        };
+        match phf.get(&kmer) {
+            None => (),
+            Some((nid, ref_offset)) => {
+                // get the node
+                let ref_node = dbg.get_node(*nid);
+                let ref_seq_slice = ref_node.sequence();
+                let ref_length = ref_seq_slice.len();
 
-        if nid != std::usize::MAX {
-            // get the node
-            let ref_node = dbg.get_node(nid);
-            let ref_seq_slice = ref_node.sequence();
-            let ref_length = ref_seq_slice.len();
+                let read_offset = kmer_pos + kmer_length;
+                let remaining_read = read_length - read_offset;
 
-            // useless sanity check but keeping it
-            let ref_kmer = ref_seq_slice.first_kmer();
-            if kmer != ref_kmer {
-                panic!("{:?} should be equal to {:?}",
-                       kmer, ref_kmer);
-            }
+                let informative_ref = ref_length + *ref_offset as usize - kmer_length;
+                let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
 
-            let read_offset = kmer_pos + kmer_length;
-            let remaining_read = read_length - read_offset;
-            // TODO: verify if it's always going to match at the start
-            // of the node
-            let informative_ref = ref_length - kmer_length;
-            let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
+                for idx in 0..max_matchable_pos {
+                    let ref_pos = kmer_length + idx;
+                    let read_pos = read_offset + idx;
 
-            for idx in 0..max_matchable_pos {
-                let ref_pos = kmer_length + idx;
-                let read_pos = read_offset + idx;
-
-                // compare base by base
-                if ref_seq_slice.get(ref_pos) != read_seq.get(read_pos) {
-                    break;
+                    // compare base by base
+                    if ref_seq_slice.get(ref_pos) != read_seq.get(read_pos) {
+                        break;
+                    }
+                    kmer_pos += 1;
                 }
-                kmer_pos += 1;
-            }
 
-            // extract colors
-            let eq_id = ref_node.data();
-            let colors = &eq_classes[*eq_id as usize];
+                // extract colors
+                let eq_id = ref_node.data();
+                let colors = &eq_classes[*eq_id as usize];
 
-            all_colors.push(colors.clone());
+                all_colors.push(colors.clone());
 
-            println!("{:?}, {:?}, {:?}", ref_seq_slice, ref_node, colors);
-        } // end-if
-
-        //let maybe_data = phf.get(&kmer);
-        //match maybe_data {
-        //    Some((_, color)) => {
-        //        let labels = eq_classes[*color as usize].clone();
-        //        eq_class.extend(labels) ;
-        //        pdqsort::sort(&mut eq_class);
-        //        eq_class.dedup();
-        //    },
-        //    None => (),
-        //}
-        //println!("{:?}", eq_class);
+                //println!("{:?}, {:?}, {:?}", ref_seq_slice, ref_node, colors);
+            } // end-if
+        }//end-match
 
         kmer_pos += 1;
         if kmer_pos > last_kmer_pos {

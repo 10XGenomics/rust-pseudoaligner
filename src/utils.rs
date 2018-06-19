@@ -30,12 +30,11 @@ pub struct Index<K, D>
 where K:Hash + Serialize, D: Eq + Hash + Serialize {
     eqclasses: Vec<Vec<D>>,
     dbg: DebruijnGraph<K, EqClassIdType>,
-    left_phf: boomphf::BoomHashMap<K, usize>,
-    right_phf: boomphf::BoomHashMap<K, usize>,
+    phf: boomphf::BoomHashMap2<K, usize, u32>,
 }
 
 impl<K, D> Index<K, D>
-where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
+where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
       D: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned{
     pub fn dump(dbg: DebruijnGraph<K, EqClassIdType>,
                 eqclasses: HashMap<Vec<D>, EqClassIdType>,
@@ -65,25 +64,21 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
         write_obj(&dbg, dbg_file_name).expect("Can't dump debruijn graph");
 
-        let mut left_kmers = Vec::new();
-        let mut right_kmers = Vec::new();
+        let mut kmers = Vec::new();
         let mut node_ids = Vec::new();
+        let mut offsets = Vec::new();
 
         for node in dbg.iter_nodes() {
-            let (left_kmer, right_kmer): (K, K) = node.sequence().both_term_kmer();
-            //let left_kmer: K = node.sequence().first_kmer();
-            left_kmers.push(left_kmer);
-            right_kmers.push(right_kmer);
-            node_ids.push(node.node_id);
+            for (offset, kmer) in node.sequence().iter_kmers::<K>().enumerate() {
+                kmers.push(kmer);
+                node_ids.push(node.node_id);
+                offsets.push(offset);
+            }
         }
 
-        let left_phf = boomphf::BoomHashMap::new(left_kmers, node_ids.clone());
-        let left_phf_file_name = index_path.to_owned() + "/left_phf.bin";
-        write_obj(&left_phf, left_phf_file_name).expect("Can't dump left phf");
-
-        let right_phf = boomphf::BoomHashMap::new(right_kmers, node_ids);
-        let right_phf_file_name = index_path.to_owned() + "/right_phf.bin";
-        write_obj(&right_phf, right_phf_file_name).expect("Can't dump right phf");
+        let phf = boomphf::BoomHashMap2::new_parallel(kmers, node_ids, offsets);
+        let phf_file_name = index_path.to_owned() + "/phf.bin";
+        write_obj(&phf, phf_file_name).expect("Can't dump phf");
     }
 
     pub fn read(index_path: &str) -> Index<K, D> {
@@ -99,26 +94,18 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned,
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
         let dbg = read_obj(dbg_file_name).expect("Can't read debruijn graph");
 
-        let left_phf_file_name = index_path.to_owned() + "/left_phf.bin";
-        let left_phf = read_obj(left_phf_file_name).expect("Can't read left phf");
-
-        let right_phf_file_name = index_path.to_owned() + "/right_phf.bin";
-        let right_phf = read_obj(right_phf_file_name).expect("Can't read right phf");
+        let phf_file_name = index_path.to_owned() + "/phf.bin";
+        let phf = read_obj(phf_file_name).expect("Can't read phf");
 
         Index{
             eqclasses: eq_classes,
             dbg: dbg,
-            left_phf: left_phf,
-            right_phf: right_phf,
+            phf: phf,
         }
     }
 
-    pub fn get_left_phf(&self) -> &boomphf::BoomHashMap<K, usize>{
-        &self.left_phf
-    }
-
-    pub fn get_right_phf(&self) -> &boomphf::BoomHashMap<K, usize>{
-        &self.right_phf
+    pub fn get_phf(&self) -> &boomphf::BoomHashMap2<K, usize, u32>{
+        &self.phf
     }
 
     pub fn get_dbg(&self) -> &DebruijnGraph<K, EqClassIdType>{
