@@ -152,8 +152,8 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
 
             let bit_head: S = num::cast(head).unwrap();
             missed_bases_counter += missed_bases;
-            for (bucket_id, slices) in bucket_slices {
-                buckets[bucket_id as usize].push((slices, Exts::empty(), bit_head.clone()));
+            for (bucket_id, slices, exts) in bucket_slices {
+                buckets[bucket_id as usize].push((slices, exts, bit_head.clone()));
             }
         }
 

@@ -60,12 +60,12 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
         uhs.contains_key(&pi.to_string())
     };
 
-    // lambda on range [start, stop) [NOTE: stop is non-inclusive]
+    // lambda on range [start, stop]
     let find_min_pos_in_range = |start, stop| {
         let mut pos = start;
         let mut min_pos: Option<usize> = None;
 
-        while pos < stop {
+        while pos < stop+1 {
             if in_uhs(pos) {
                 match min_pos {
                     Some(old_pos) => { min_pos = Some(min_uhs_pos(old_pos, pos)); },

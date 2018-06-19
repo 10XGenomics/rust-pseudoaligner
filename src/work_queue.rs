@@ -55,7 +55,7 @@ impl WorkQueue{
 }
 
 pub fn run<'a>(contigs: &'a Vec<DnaString>, uhs: &DocksUhs)
-               -> (std::vec::Vec<(u16, DnaStringSlice<'a>)>, usize){
+               -> (std::vec::Vec<(u16, DnaStringSlice<'a>, Exts)>, usize){
     // One FASTA entry possibly broken into multiple contigs
     // based on the location of `N` int he sequence.
     let mut missed_bases_counter = 0;
@@ -73,7 +73,8 @@ pub fn run<'a>(contigs: &'a Vec<DnaString>, uhs: &DocksUhs)
                 }
 
                 let slice = seq.slice(msp.start(), msp.end());
-                bucket_slices.push((bucket_id, slice));
+                let exts = Exts::from_dna_string(seq, msp.start(), msp.len());
+                bucket_slices.push((bucket_id, slice, exts));
             }
         }
         else{
