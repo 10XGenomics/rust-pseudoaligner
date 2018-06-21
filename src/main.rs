@@ -52,7 +52,7 @@ use config::{DocksUhs, KmerType};
 
 fn read_fasta(reader: fasta::Reader<File>,
               tgmap_file: &str)
-              -> (Vec<Vec<DnaString>>, Vec<usize>) {
+              -> (Vec<Vec<DnaString>>, Vec<usize>, Vec<String>) {
     let mut gene_id: usize = 0;
     let tgmap_reader = File::open(tgmap_file).expect("can't read tgmap file");
     let mut tgmap: HashMap<String, usize> = HashMap::new();
@@ -113,11 +113,17 @@ fn read_fasta(reader: fasta::Reader<File>,
     println!();
     info!("Done Reading the Fasta file; Found {} sequences", transcript_counter);
 
-    (seqs, tgmap_vec)
+    let mut gene_id_vec = vec!["".to_string(); gene_id_map.len()];
+    for (gene, gid) in gene_id_map {
+        gene_id_vec[ gid ] = gene;
+    }
+
+    (seqs, tgmap_vec, gene_id_vec)
 }
 
 fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
-                         uhs: DocksUhs, tgmap: Vec<usize> ) {
+                         uhs: DocksUhs, tgmap: Vec<usize>,
+                         gene_order: Vec<String>) {
     let seqs_len = seqs.len();
 
     // Based on the number of sequences chose the right primary datatype
@@ -126,19 +132,19 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
             info!("Using 8 bit variable for storing the data.");
             call_filter_kmers(&seqs, index_file,
                               &uhs, u8::min_value(),
-                              tgmap);
+                              tgmap, gene_order);
         },
         U8_MAX ... U16_MAX => {
             info!("Using 16 bit variable for storing the data.");
             call_filter_kmers(&seqs, index_file,
                               &uhs, u16::min_value(),
-                              tgmap);
+                              tgmap, gene_order);
         },
         U16_MAX ... U32_MAX => {
             info!("Using 32 bit variable for storing the data.");
             call_filter_kmers::<u32>(&seqs, index_file,
                                      &uhs, u32::min_value(),
-                                     tgmap);
+                                     tgmap, gene_order);
         },
         _ => {
             error!("Too many ({}) sequneces to handle.", seqs_len);
@@ -147,7 +153,8 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
 }
 
 fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
-                        uhs: &DocksUhs, _seq_id: S, tgmap: Vec<usize>)
+                        uhs: &DocksUhs, _seq_id: S, tgmap: Vec<usize>,
+                        gene_order: Vec<String>)
 where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     + Send + Sync + Num + NumCast + DeserializeOwned {
     info!("Starting Bucketing");
@@ -278,7 +285,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     let full_dbg = work_queue::merge_graphs(dbgs);
     let eq_classes = Arc::try_unwrap(summarizer).unwrap().get_eq_classes();
 
-    utils::Index::dump(full_dbg,
+    utils::Index::dump(full_dbg, gene_order,
                        eq_classes.into_inner().expect("Can't unwrap eqclass"),
                        index_file);
 }
@@ -349,7 +356,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                 },
                 Some(eq_class) => {
                     read_counter += 1;
-                    if eq_class.1.len() > 0 {
+                    if (eq_class.1).0.len() > 0 {
                         mapped_read_counter += 1;
                     }
 
@@ -402,14 +409,11 @@ fn main() {
              .help("tells to make the index")
              .short("m")
              .long("make")
+             .requires("tgMap")
              .requires("index")
              .requires("fasta"))
         .get_matches();
     pretty_env_logger::init();
-
-    // Gets a value for config if supplied by user
-    let fasta_file = matches.value_of("fasta").unwrap();
-    info!("Path for reference FASTA: {}", fasta_file);
 
     // obtain reader or fail with error (via the unwrap method)
     let index_file = matches.values_of("index").unwrap().next().unwrap();
@@ -418,23 +422,26 @@ fn main() {
         warn!("Creating the index, can take little time.");
         let uhs = docks::read_uhs();
 
+        // Gets a value for config if supplied by user
+        let fasta_file = matches.value_of("fasta").unwrap();
+        info!("Path for reference FASTA: {}", fasta_file);
+
         // obtain reader or fail with error (via the unwrap method)
         let tgmap_file = matches.values_of("tgMap").unwrap().next().expect("no tgmap file found");
 
         // if index not found then create a new one
         let reader = fasta::Reader::from_file(fasta_file).unwrap();
-        let (seqs, tgmap) = read_fasta(reader, tgmap_file);
+        let (seqs, tgmap, gene_order) = read_fasta(reader, tgmap_file);
 
         //Set up the filter_kmer call based on the number of sequences.
-        filter_kmers_callback(seqs, index_file, uhs, tgmap);
+        filter_kmers_callback(seqs, index_file, uhs, tgmap, gene_order);
 
         info!("Finished Indexing !");
     }
     else{
         // import the index if already present.
         info!("Reading index from File: {:?}", index_file);
-        let data_type_file_name = index_file.to_owned() + "/type.bin";
-        let data_type: usize = utils::read_obj(data_type_file_name).expect("Can't read data type");
+        let data_type = utils::get_data_type(index_file);
 
         // obtain reader or fail with error (via the unwrap method)
         let reads_file = matches.value_of("reads").unwrap();

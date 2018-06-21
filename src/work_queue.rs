@@ -129,7 +129,7 @@ pub fn map<S>(read_seq: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
               eq_classes: &Vec<Vec<S>>,
               phf: &boomphf::BoomHashMap2<KmerType, usize, u32>)
-              -> Vec<S>
+              -> (Vec<S>, usize)
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut all_colors: Vec<Vec<S>> = Vec::new();
     let read_length = read_seq.len();
@@ -138,30 +138,36 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut kmer = read_seq.first_kmer();
     let kmer_length = KmerType::k();
     let last_kmer_pos = read_length - kmer_length;
+    let mut read_coverage: usize = 0;
 
     while kmer_pos <= last_kmer_pos {
         match phf.get(&kmer) {
-            None => (),
+            None => kmer_pos += 1,
             Some((nid, ref_offset)) => {
+                // increment counter since found the kmer
+                kmer_pos += kmer_length;
+                read_coverage += kmer_length;
+                let remaining_read = read_length - kmer_pos;
+
                 // get the node
                 let ref_node = dbg.get_node(*nid);
                 let ref_seq_slice = ref_node.sequence();
                 let ref_length = ref_seq_slice.len();
 
-                let read_offset = kmer_pos + kmer_length;
-                let remaining_read = read_length - read_offset;
-
-                let informative_ref = ref_length + *ref_offset as usize - kmer_length;
+                let reference_offset: usize = *ref_offset as usize;
+                let informative_ref = ref_length - reference_offset - kmer_length;
                 let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
 
                 for idx in 0..max_matchable_pos {
-                    let ref_pos = kmer_length + idx;
-                    let read_pos = read_offset + idx;
+                    let ref_pos = reference_offset + kmer_length + idx;
+                    let read_pos = kmer_pos;
 
                     // compare base by base
                     if ref_seq_slice.get(ref_pos) != read_seq.get(read_pos) {
                         break;
                     }
+
+                    read_coverage += 1;
                     kmer_pos += 1;
                 }
 
@@ -169,28 +175,30 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
                 let eq_id = ref_node.data();
                 let colors = &eq_classes[*eq_id as usize];
 
-                all_colors.push(colors.clone());
+                println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
+                         ref_node, ref_seq_slice, colors,
+                         kmer_pos, remaining_read, informative_ref,
+                         max_matchable_pos, kmer, *ref_offset);
 
-                //println!("{:?}, {:?}, {:?}", ref_seq_slice, ref_node, colors);
-            } // end-if
+                all_colors.push(colors.clone());
+            } // end-Some
         }//end-match
 
-        kmer_pos += 1;
         if kmer_pos > last_kmer_pos {
             break;
         }
         kmer = read_seq.get_kmer(kmer_pos);
-    }// end-loop
+    }// end-while
 
     // Take the intersection of the sets
     let total_classes = all_colors.len();
     if total_classes == 0 {
-        Vec::new()
+        return (Vec::new(), read_coverage)
     }
     else{
         let elem: Vec<S> = all_colors.pop().unwrap();
         if total_classes == 1 {
-            return elem
+            return (elem, read_coverage)
         }
 
         let mut eq_class_set: HashSet<S> = elem.into_iter().collect();
@@ -200,6 +208,6 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
         }
 
         let eq_class: Vec<S> = eq_class_set.into_iter().collect();
-        eq_class
+        return (eq_class, read_coverage)
     }
 }

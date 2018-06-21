@@ -5,6 +5,7 @@
 use std::fs;
 use std::mem;
 use std::fs::File;
+use std::io::Write;
 use std::hash::Hash;
 use std::fmt::Debug;
 use std::boxed::Box;
@@ -37,6 +38,7 @@ impl<K, D> Index<K, D>
 where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
       D: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned{
     pub fn dump(dbg: DebruijnGraph<K, EqClassIdType>,
+                gene_order: Vec<String>,
                 eqclasses: HashMap<Vec<D>, EqClassIdType>,
                 index_path: &str) {
 
@@ -61,6 +63,12 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
         write_obj(&eqclasses_vec, eqclass_file_name).expect("Can't dump classes");
 
+        let genes_file_name = index_path.to_owned() + "/genes.txt";
+        let mut file_handle = File::create(genes_file_name).expect("Unable to create file");
+        for i in gene_order{
+            write!(file_handle, "{}\n", i).expect("can't write gene names");
+        }
+
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
         write_obj(&dbg, dbg_file_name).expect("Can't dump debruijn graph");
 
@@ -69,10 +77,12 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let mut offsets = Vec::new();
 
         for node in dbg.iter_nodes() {
-            for (offset, kmer) in node.sequence().iter_kmers::<K>().enumerate() {
+            let mut offset = 0;
+            for kmer in node.sequence().iter_kmers::<K>() {
                 kmers.push(kmer);
                 node_ids.push(node.node_id);
                 offsets.push(offset);
+                offset += 1;
             }
         }
 
@@ -115,6 +125,17 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
     pub fn get_eq_classes(&self) -> &Vec<Vec<D>>{
         &self.eqclasses
     }
+}
+
+pub fn get_data_type(index_path: &str) -> usize {
+    match fs::read_dir(index_path) {
+        Err(_) => panic!("{:?} directory not found", index_path),
+        Ok(_) => info!("Reading index from folder: {:?}", index_path),
+    }
+
+    let data_type_file_name = index_path.to_owned() + "/type.bin";
+    let data_type: usize = read_obj(data_type_file_name).expect("Can't read data type");
+    data_type
 }
 
 /// Open a (possibly gzipped) file into a BufReader.
