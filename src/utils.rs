@@ -10,7 +10,6 @@ use std::hash::Hash;
 use std::fmt::Debug;
 use std::boxed::Box;
 use std::path::{Path};
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, BufWriter};
 
 //use bincode;
@@ -39,29 +38,22 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
       D: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned{
     pub fn dump(dbg: DebruijnGraph<K, EqClassIdType>,
                 gene_order: Vec<String>,
-                eqclasses: HashMap<Vec<D>, EqClassIdType>,
+                eqclasses: Vec<Vec<D>>,
                 index_path: &str) {
-
-        let hash_len = eqclasses.len();
-        let mut eqclasses_vec: Vec<Vec<D>> = Vec::new();
-        eqclasses_vec.resize(hash_len, Vec::<D>::new());
-
-        // fill in eqclasses into vector
-        for (eqclass, index) in eqclasses.into_iter() {
-            eqclasses_vec[index as usize] = eqclass;
-        }
-        info!("Found {} Equivalence classes", eqclasses_vec.len());
 
         info!("Dumping index into folder: {:?}", index_path);
         match fs::create_dir(index_path) {
             Err(err) => warn!("{:?}", err),
             Ok(()) => info!("Creating folder {:?}", index_path),
         }
+
         let data_type: usize = mem::size_of::<D>();
         write_obj(&data_type, index_path.to_owned() + "/type.bin").expect("Can't dump data type");
 
         let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
-        write_obj(&eqclasses_vec, eqclass_file_name).expect("Can't dump classes");
+        write_obj(&eqclasses, eqclass_file_name).expect("Can't dump classes");
+
+        info!("Found {} Equivalence classes", eqclasses.len());
 
         let genes_file_name = index_path.to_owned() + "/genes.txt";
         let mut file_handle = File::create(genes_file_name).expect("Unable to create file");
@@ -99,7 +91,8 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         }
 
         let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
-        let eq_classes: Vec<Vec<D>> = read_obj(eqclass_file_name).expect("Can't read classes");
+        let eq_classes: Vec<Vec<D>> = read_obj(eqclass_file_name)
+            .expect("Can't read classes");
 
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
         let dbg = read_obj(dbg_file_name).expect("Can't read debruijn graph");

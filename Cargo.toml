@@ -21,6 +21,10 @@ crossbeam = "0.3.2"
 rand = "0.4.2"
 csv = "1.0.0-beta.5"
 
+[dependencies.concurrent-hashmap]
+version = "0.2.1"
+default-features = false
+
 [dependencies.boomphf]
 path = "../../rust-boomphf"
 features = ["serde"]

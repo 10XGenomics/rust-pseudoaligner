@@ -283,10 +283,10 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     //println!("{:?}", summarizer);
 
     let full_dbg = work_queue::merge_graphs(dbgs);
-    let eq_classes = Arc::try_unwrap(summarizer).unwrap().get_eq_classes();
+    let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
 
     utils::Index::dump(full_dbg, gene_order,
-                       eq_classes.into_inner().expect("Can't unwrap eqclass"),
+                       eq_classes,
                        index_file);
 }
 

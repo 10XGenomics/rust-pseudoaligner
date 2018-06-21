@@ -84,9 +84,10 @@ pub fn run<'a>(contigs: &'a Vec<DnaString>, uhs: &DocksUhs)
     (bucket_slices, missed_bases_counter)
 }
 
-pub fn analyze<S:Clone+Eq+Hash+Ord+Debug>( bucket_data: Vec<(DnaStringSlice, Exts, S)>,
-                                           summarizer: &Arc<CountFilterEqClass<S>>)
-                                           -> Option<BaseGraph<KmerType, EqClassIdType>> {
+pub fn analyze<S>( bucket_data: Vec<(DnaStringSlice, Exts, S)>,
+                   summarizer: &Arc<CountFilterEqClass<S>>)
+                   -> Option<BaseGraph<KmerType, EqClassIdType>>
+where S: Clone + Eq + Hash + Ord + Debug + Send + Sync {
     if bucket_data.len() > 0 {
         //println!("{:?}", bucket_data);
         // run filter_kmer
@@ -175,10 +176,10 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
                 let eq_id = ref_node.data();
                 let colors = &eq_classes[*eq_id as usize];
 
-                println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
-                         ref_node, ref_seq_slice, colors,
-                         kmer_pos, remaining_read, informative_ref,
-                         max_matchable_pos, kmer, *ref_offset);
+                //println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
+                //         ref_node, ref_seq_slice, colors,
+                //         kmer_pos, remaining_read, informative_ref,
+                //         max_matchable_pos, kmer, *ref_offset);
 
                 all_colors.push(colors.clone());
             } // end-Some
