@@ -48,6 +48,7 @@ use debruijn::{Exts};
 use debruijn::dna_string::*;
 
 use config::{U8_MAX, U16_MAX, U32_MAX, MAX_WORKER, BUCKET_SIZE_THRESHOLD, MIN_KMERS};
+use config::{READ_COVERAGE_THRESHOLD};
 use config::{DocksUhs, KmerType};
 
 fn read_fasta(reader: fasta::Reader<File>,
@@ -319,10 +320,18 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                                 Err(err) => panic!("Error {:?} in reading fastq", err),
                             };
 
-                            let seqs = DnaString::from_dna_string( str::from_utf8(record.seq()).unwrap() );
-                            let eq_class = work_queue::map(seqs, dbg, eq_classes, phf);
+                            let dna_string = str::from_utf8(record.seq()).unwrap();
+                            let seqs = DnaString::from_dna_string( dna_string );
+                            let read_data = work_queue::map(seqs, dbg, eq_classes, phf);
 
-                            tx.send(Some((record.id().to_owned(), eq_class))).expect("Could not send data!");
+                            let wrapped_read_data = match read_data {
+                                Some((eq_class, coverage)) => {
+                                    Some((record.id().to_owned(), eq_class, coverage))
+                                },
+                                None => Some(("".to_string(), Vec::new(), 0)),
+                            };
+
+                            tx.send(wrapped_read_data).expect("Could not send data!");
                         },
                         None => { break; },
                     }; //end-match
@@ -354,12 +363,8 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                         break;
                     }
                 },
-                Some(eq_class) => {
+                Some(read_data) => {
                     read_counter += 1;
-                    if (eq_class.1).0.len() > 0 {
-                        mapped_read_counter += 1;
-                    }
-
                     if read_counter % 100000 == 0 {
                         let frac_mapped = mapped_read_counter as f32 * 100.0 / read_counter as f32;
                         print!("\rDone Mapping {} reads w/ Rate: {}",
@@ -367,7 +372,11 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                         io::stdout().flush().ok().expect("Could not flush stdout");
                     }
 
-                    eprintln!("{:?}", eq_class);
+                    let (read_id, eq_class, coverage) = read_data;
+                    if coverage >= READ_COVERAGE_THRESHOLD && eq_class.len() > 0 {
+                        mapped_read_counter += 1;
+                        eprintln!("{}=>{:?},{}", read_id, eq_class, coverage);
+                    }
                 } // end-Some
             } // end-match
         } // end-for

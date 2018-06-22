@@ -130,7 +130,7 @@ pub fn map<S>(read_seq: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
               eq_classes: &Vec<Vec<S>>,
               phf: &boomphf::BoomHashMap2<KmerType, usize, u32>)
-              -> (Vec<S>, usize)
+              -> Option<(Vec<S>, usize)>
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut all_colors: Vec<Vec<S>> = Vec::new();
     let read_length = read_seq.len();
@@ -194,21 +194,26 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     // Take the intersection of the sets
     let total_classes = all_colors.len();
     if total_classes == 0 {
-        return (Vec::new(), read_coverage)
-    }
-    else{
-        let elem: Vec<S> = all_colors.pop().unwrap();
-        if total_classes == 1 {
-            return (elem, read_coverage)
+        if read_coverage != 0 {
+            panic!("Different read coverage {:?} than num of eqclasses {:?}",
+                   total_classes, read_coverage);
         }
 
-        let mut eq_class_set: HashSet<S> = elem.into_iter().collect();
+        return None
+    }
+    else{
+        let eq_classes: Vec<S> = all_colors.pop().unwrap();
+        if total_classes == 1 {
+            return Some((eq_classes, read_coverage))
+        }
+
+        let mut eq_class_set: HashSet<S> = eq_classes.into_iter().collect();
         for colors in all_colors {
             let colors_set: HashSet<S> = colors.into_iter().collect();
             eq_class_set = eq_class_set.intersection(&colors_set).cloned().collect();
         }
 
-        let eq_class: Vec<S> = eq_class_set.into_iter().collect();
-        return (eq_class, read_coverage)
+        let eq_classes: Vec<S> = eq_class_set.into_iter().collect();
+        return Some((eq_classes, read_coverage))
     }
 }
