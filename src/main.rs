@@ -160,7 +160,7 @@ fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
 where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     + Send + Sync + Num + NumCast + DeserializeOwned {
     info!("Starting Bucketing");
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(MAX_WORKER*10);
     let num_seqs = seqs.len();
     let queue = Arc::new(work_queue::WorkQueue::new());
     let mut buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
@@ -238,7 +238,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     let summarizer = Arc::new(debruijn::filter::CountFilterEqClass::new(MIN_KMERS));
     {
         info!("Starting per-bucket De-bruijn Graph Creation");
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(MAX_WORKER*10);
 
         let atomic_buckets = Arc::new(Mutex::new(big_buckets));
         let queue = Arc::new(work_queue::WorkQueue::new());
@@ -301,7 +301,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
 
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(MAX_WORKER*10);
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
 
     let dbg = index.get_dbg();

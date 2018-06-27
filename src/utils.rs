@@ -30,7 +30,7 @@ pub struct Index<K, D>
 where K:Hash + Serialize, D: Eq + Hash + Serialize {
     eqclasses: Vec<Vec<D>>,
     dbg: DebruijnGraph<K, EqClassIdType>,
-    phf: boomphf::BoomHashMap2<K, usize, u32>,
+    phf: boomphf::NoKeyBoomHashMap2<K, usize, u32>,
 }
 
 impl<K, D> Index<K, D>
@@ -68,7 +68,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let mut node_ids = Vec::new();
         let mut offsets = Vec::new();
 
-        for node in dbg.iter_nodes() {
+        for node in dbg.into_iter() {
             let mut offset = 0;
             for kmer in node.sequence().iter_kmers::<K>() {
                 kmers.push(kmer);
@@ -78,7 +78,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
             }
         }
 
-        let phf = boomphf::BoomHashMap2::new_parallel(kmers, node_ids, offsets);
+        let phf = boomphf::NoKeyBoomHashMap2::new_parallel(kmers, node_ids, offsets);
         let phf_file_name = index_path.to_owned() + "/phf.bin";
         write_obj(&phf, phf_file_name).expect("Can't dump phf");
     }
@@ -107,7 +107,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         }
     }
 
-    pub fn get_phf(&self) -> &boomphf::BoomHashMap2<K, usize, u32>{
+    pub fn get_phf(&self) -> &boomphf::NoKeyBoomHashMap2<K, usize, u32>{
         &self.phf
     }
 

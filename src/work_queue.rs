@@ -130,7 +130,7 @@ where R: std::io::Read{
 pub fn map<S>(read_seq: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
               eq_classes: &Vec<Vec<S>>,
-              phf: &boomphf::BoomHashMap2<KmerType, usize, u32>)
+              phf: &boomphf::NoKeyBoomHashMap2<KmerType, usize, u32>)
               -> Option<(Vec<S>, usize)>
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut all_colors: Vec<Vec<S>> = Vec::new();
@@ -146,43 +146,49 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
         match phf.get(&kmer) {
             None => kmer_pos += 1,
             Some((nid, ref_offset)) => {
-                // increment counter since found the kmer
-                kmer_pos += kmer_length;
-                read_coverage += kmer_length;
-                let remaining_read = read_length - kmer_pos;
 
                 // get the node
                 let ref_node = dbg.get_node(*nid);
                 let ref_seq_slice = ref_node.sequence();
-                let ref_length = ref_seq_slice.len();
 
-                let reference_offset: usize = *ref_offset as usize;
-                let informative_ref = ref_length - reference_offset - kmer_length;
-                let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
+                if ref_seq_slice.get_kmer::<KmerType>(*ref_offset as usize) == kmer {
+                    // increment counter since found the kmer
+                    kmer_pos += kmer_length;
+                    read_coverage += kmer_length;
+                    let remaining_read = read_length - kmer_pos;
 
-                for idx in 0..max_matchable_pos {
-                    let ref_pos = reference_offset + kmer_length + idx;
-                    let read_pos = kmer_pos;
+                    let ref_length = ref_seq_slice.len();
+                    let reference_offset: usize = *ref_offset as usize;
+                    let informative_ref = ref_length - reference_offset - kmer_length;
+                    let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
 
-                    // compare base by base
-                    if ref_seq_slice.get(ref_pos) != read_seq.get(read_pos) {
-                        break;
+                    for idx in 0..max_matchable_pos {
+                        let ref_pos = reference_offset + kmer_length + idx;
+                        let read_pos = kmer_pos;
+
+                        // compare base by base
+                        if ref_seq_slice.get(ref_pos) != read_seq.get(read_pos) {
+                            break;
+                        }
+
+                        read_coverage += 1;
+                        kmer_pos += 1;
                     }
 
-                    read_coverage += 1;
+                    // extract colors
+                    let eq_id = ref_node.data();
+                    let colors = &eq_classes[*eq_id as usize];
+
+                    //println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
+                    //         ref_node, ref_seq_slice, colors,
+                    //         kmer_pos, remaining_read, informative_ref,
+                    //         max_matchable_pos, kmer, *ref_offset);
+
+                    all_colors.push(colors.clone());
+                } // end-if for matching kmer in mphf
+                else{
                     kmer_pos += 1;
                 }
-
-                // extract colors
-                let eq_id = ref_node.data();
-                let colors = &eq_classes[*eq_id as usize];
-
-                //println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
-                //         ref_node, ref_seq_slice, colors,
-                //         kmer_pos, remaining_read, informative_ref,
-                //         max_matchable_pos, kmer, *ref_offset);
-
-                all_colors.push(colors.clone());
             } // end-Some
         }//end-match
 
