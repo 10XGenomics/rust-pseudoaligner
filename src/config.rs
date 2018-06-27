@@ -6,7 +6,7 @@ pub const MEM_SIZE: usize = 1;
 pub const MIN_KMERS: usize = 1;
 pub const STRANDED: bool = true;
 pub const REPORT_ALL_KMER: bool = false;
-pub const READ_COVERAGE_THRESHOLD: usize = 0;
+pub const READ_COVERAGE_THRESHOLD: usize = 60;
 pub const BUCKET_SIZE_THRESHOLD: usize = 500;
 
 pub const U8_MAX: usize = u8::max_value() as usize;
@@ -14,7 +14,7 @@ pub const U16_MAX: usize = u16::max_value() as usize;
 pub const U32_MAX: usize = u32::max_value() as usize;
 
 // Worker queue configs
-pub const MAX_WORKER: usize = 6;
+pub const MAX_WORKER: usize = 4;
 
 //DOCKS configs
 pub type DocksUhs = HashMap<String, u16>;

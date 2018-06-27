@@ -173,18 +173,18 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
 
             scope.spawn(move || {
                 loop {
-                    let done = queue.len();
-                    if done % 10 == 0 {
-                        print!("\rDone Bucketing {}% of the reference sequences",
-                               std::cmp::min(100, done*100/num_seqs));
-                        io::stdout().flush().ok().expect("Could not flush stdout");
-                    }
-
                     // If work is available, do that work.
                     match queue.get_work(seqs) {
                         Some((seq, head)) => {
                             let thread_data =  work_queue::run(seq, uhs);
                             tx.send((thread_data, head)).expect("Could not send data!");
+
+                            let done = queue.len();
+                            if done % 10 == 0 {
+                                print!("\rDone Bucketing {}% of the reference sequences",
+                                       std::cmp::min(100, done*100/num_seqs));
+                                io::stdout().flush().ok().expect("Could not flush stdout");
+                            }
                           },
                         None => { break; },
                     };
@@ -252,18 +252,18 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
 
                 scope.spawn(move || {
                     loop {
-                        let done = queue.len();
-                        if done % 10 == 0 {
-                            print!("\rDone Analyzing {}% of the buckets",
-                                   done*100/num_buckets);
-                            io::stdout().flush().ok().expect("Could not flush stdout");
-                        }
-
                         // If work is available, do that work.
                         match queue.get_rev_work(&bucket_ref) {
                             Some((bucket_data, _)) => {
                                 let thread_data = work_queue::analyze(bucket_data, &summarizer_ref);
                                 tx.send(thread_data).expect("Could not send data!");
+
+                                let done = queue.len();
+                                if done % 10 == 0 {
+                                    print!("\rDone Analyzing {}% of the buckets",
+                                           done*100/num_buckets);
+                                    io::stdout().flush().ok().expect("Could not flush stdout");
+                                }
                             },
                             None => { break; },
                         };
