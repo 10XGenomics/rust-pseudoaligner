@@ -108,7 +108,8 @@ pub fn merge_graphs( uncompressed_dbgs: Vec<BaseGraph<KmerType, EqClassIdType>> 
                      -> DebruijnGraph<KmerType, EqClassIdType> {
     //println!("{:?}", uncompressed_dbgs);
     // make a combined graph
-    let combined_graph = BaseGraph::combine(uncompressed_dbgs.into_iter()).finish();
+    let combined_graph = BaseGraph::combine(uncompressed_dbgs.into_iter())
+        .finish();
 
     //println!("{:?}", combined_graph);
     // compress the graph

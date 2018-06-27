@@ -11,6 +11,7 @@ extern crate num;
 extern crate failure;
 extern crate crossbeam;
 extern crate csv;
+extern crate rayon;
 
 #[macro_use]
 extern crate log;
@@ -281,8 +282,11 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     println!();
     info!("Done seprate de-bruijn graph construction; ");
     info!("Starting merge");
-    //println!("{:?}", summarizer);
 
+    // Thread pool Configuration for calling BOOMphf
+    rayon::ThreadPoolBuilder::new().num_threads(MAX_WORKER).build_global().unwrap();
+
+    //println!("{:?}", summarizer);
     let full_dbg = work_queue::merge_graphs(dbgs);
     let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
 

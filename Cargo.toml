@@ -20,6 +20,7 @@ num = "0.1.42"
 crossbeam = "0.3.2"
 rand = "0.4.2"
 csv = "1.0.0-beta.5"
+rayon = "1.0.1"
 
 [dependencies.concurrent-hashmap]
 version = "0.2.1"
