@@ -25,6 +25,8 @@ use bincode::{serialize_into, deserialize_from};
 use failure::Error;
 use flate2::read::MultiGzDecoder;
 
+use std::marker::PhantomData;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Index<K, D>
 where K:Hash + Serialize, D: Eq + Hash + Serialize {
@@ -64,21 +66,33 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
         write_obj(&dbg, dbg_file_name).expect("Can't dump debruijn graph");
 
-        let mut kmers = Vec::new();
-        let mut node_ids = Vec::new();
-        let mut offsets = Vec::new();
+        let mut total_kmers = 0;
+        let kmer_length = K::k();
+        for node in dbg.iter_nodes() {
+            total_kmers += node.len()-kmer_length+1;
+        }
 
-        for node in dbg.into_iter() {
+        let mut node_ids: Vec<usize> = vec![0; total_kmers];
+        let mut offsets: Vec<u32> = vec![0; total_kmers];
+
+        let mphf = boomphf::Mphf::new_with_key(1.7, &dbg, None, total_kmers);
+        for node in dbg.iter_nodes() {
             let mut offset = 0;
             for kmer in node.sequence().iter_kmers::<K>() {
-                kmers.push(kmer);
-                node_ids.push(node.node_id);
-                offsets.push(offset);
+                let index = mphf.try_hash(&kmer).unwrap();
+                node_ids[index as usize] = node.node_id;
+                offsets[index as usize] = offset;
                 offset += 1;
             }
         }
 
-        let phf = boomphf::NoKeyBoomHashMap2::new_parallel(kmers, node_ids, offsets);
+        let phf = boomphf::NoKeyBoomHashMap2 {
+            mphf: mphf,
+            phantom: PhantomData,
+            values: node_ids,
+            aux_values: offsets,
+        };
+
         let phf_file_name = index_path.to_owned() + "/phf.bin";
         write_obj(&phf, phf_file_name).expect("Can't dump phf");
     }
