@@ -71,6 +71,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         for node in dbg.iter_nodes() {
             total_kmers += node.len()-kmer_length+1;
         }
+        println!("Total {:?} kmers to process in dbg", total_kmers);
 
         let mut node_ids: Vec<usize> = vec![0; total_kmers];
         let mut offsets: Vec<u32> = vec![0; total_kmers];
@@ -79,7 +80,10 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         for node in dbg.iter_nodes() {
             let mut offset = 0;
             for kmer in node.sequence().iter_kmers::<K>() {
-                let index = mphf.try_hash(&kmer).unwrap();
+                let index = match mphf.try_hash(&kmer){
+                    Some(index) => index,
+                    None => panic!("Nothing found for {:?}", kmer),
+                };
                 node_ids[index as usize] = node.node_id;
                 offsets[index as usize] = offset;
                 offset += 1;
