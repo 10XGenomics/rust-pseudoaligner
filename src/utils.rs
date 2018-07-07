@@ -26,6 +26,7 @@ use failure::Error;
 use flate2::read::MultiGzDecoder;
 
 use std::marker::PhantomData;
+use config::MAX_WORKER;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Index<K, D>
@@ -76,7 +77,9 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let mut node_ids: Vec<usize> = vec![0; total_kmers];
         let mut offsets: Vec<u32> = vec![0; total_kmers];
 
-        let mphf = boomphf::Mphf::new_with_key(1.7, &dbg, None, total_kmers);
+        let mphf = boomphf::Mphf::new_parallel_with_key(1.7, &dbg, None,
+                                                        total_kmers,
+                                                        MAX_WORKER);
         for node in dbg.iter_nodes() {
             let mut offset = 0;
             for kmer in node.sequence().iter_kmers::<K>() {
