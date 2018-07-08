@@ -1,5 +1,5 @@
 [package]
-name = "debruijn-mapping"
+name = "mapping"
 version = "0.1.0"
 authors = ["avi.srivastava <avi.srivastava@10xgenomics.com>"]
 
@@ -9,7 +9,6 @@ clap = "~2.31"
 itertools = ">=0.6"
 pdqsort = "*"
 log = "0.4.1"
-pretty_env_logger = "0.2.3"
 bincode = "1.0.0"
 flate2 = "1.0.1"
 serde = "1.0.50"
@@ -19,6 +18,10 @@ crossbeam = "0.3.2"
 rand = "0.4.2"
 csv = "1.0.0-beta.5"
 rayon = "1.0.1"
+
+[dependencies.pretty_env_logger] 
+# = "0.2.3"
+path = "../../pretty-env-logger"
 
 [dependencies.extprim]
 version = ">=1.6.0"

@@ -10,12 +10,15 @@ use std::hash::Hash;
 use std::fmt::Debug;
 use std::boxed::Box;
 use std::path::{Path};
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::sync_channel;
 use std::io::{BufRead, BufReader, BufWriter};
 
 //use bincode;
 use bincode;
 use boomphf;
-use debruijn::{Kmer, Vmer};
+use crossbeam;
+use debruijn::Kmer;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 use debruijn::graph::DebruijnGraph;
@@ -25,7 +28,6 @@ use bincode::{serialize_into, deserialize_from};
 use failure::Error;
 use flate2::read::MultiGzDecoder;
 
-use std::marker::PhantomData;
 use config::MAX_WORKER;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -72,36 +74,119 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         for node in dbg.iter_nodes() {
             total_kmers += node.len()-kmer_length+1;
         }
-        println!("Total {:?} kmers to process in dbg", total_kmers);
-
-        let mut node_ids: Vec<usize> = vec![0; total_kmers];
-        let mut offsets: Vec<u32> = vec![0; total_kmers];
-
-        let mphf = boomphf::Mphf::new_parallel_with_key(1.7, &dbg, None,
-                                                        total_kmers,
-                                                        MAX_WORKER);
-        for node in dbg.iter_nodes() {
-            let mut offset = 0;
-            for kmer in node.sequence().iter_kmers::<K>() {
-                let index = match mphf.try_hash(&kmer){
-                    Some(index) => index,
-                    None => panic!("Nothing found for {:?}", kmer),
-                };
-                node_ids[index as usize] = node.node_id;
-                offsets[index as usize] = offset;
-                offset += 1;
-            }
-        }
-
-        let phf = boomphf::NoKeyBoomHashMap2 {
-            mphf: mphf,
-            phantom: PhantomData,
-            values: node_ids,
-            aux_values: offsets,
-        };
-
+        info!("Total {:?} kmers to process in dbg", total_kmers);
+        let mphf = boomphf::Mphf::new_parallel_with_keys(1.7, &dbg, None,
+                                                         total_kmers,
+                                                         MAX_WORKER);
         let phf_file_name = index_path.to_owned() + "/phf.bin";
-        write_obj(&phf, phf_file_name).expect("Can't dump phf");
+        write_obj(&mphf, phf_file_name).expect("Can't dump phf");
+
+        const IO_THREADS: usize = 3;
+        info!("Done Creating Minimum Perfect Hash");
+        info!("Aligning positions with MPHF");
+        {
+            let mut node_ids = vec![0; total_kmers];
+            let mphf_ref = &mphf;
+            let (tx, rx) = sync_channel(2 * IO_THREADS);
+
+            let work_queue = Arc::new(Mutex::new(dbg.into_iter()));
+
+            crossbeam::scope(|scope| {
+
+                for _ in 0 .. IO_THREADS {
+                    let work_queue = work_queue.clone();
+                    let tx = tx.clone();
+
+                    scope.spawn(move || {
+                        loop {
+
+                            let node =
+                                match work_queue.lock().unwrap().next() {
+                                    None => break,
+                                    Some(val) => val,
+                                };
+
+                            let node_id = node.node_id;
+                            let mut indices: Vec<u64> = Vec::new();
+
+                            for kmer in node {
+                                let index = match mphf_ref.try_hash(&kmer) {
+                                    None => panic!("can't find in hash"),
+                                    Some(index) => index.clone(),
+                                };
+                                indices.push(index);
+                            }
+
+                            tx.send((indices, node_id)).unwrap();
+
+                        } //end-loop
+                    }); //end-scope
+                } //end-threads-for
+
+                drop(tx);
+                for (data, node_id) in rx.iter(){
+                    for index in data {
+                        node_ids[index as usize] = node_id;
+                    }
+                }
+            }); //end-crossbeam
+
+            info!("Starting Dumping positions");
+            let pos_file_name = index_path.to_owned() + "/positions.bin";
+            write_obj(&node_ids, pos_file_name).expect("Can't dump positions");
+        } //end-positions scope
+
+        info!("Aligning offsets with MPHF");
+        {
+            let mut offsets: Vec<u32> = vec![0; total_kmers];
+            let mphf_ref = &mphf;
+            let (tx, rx) = sync_channel(2 * IO_THREADS);
+
+            let work_queue = Arc::new(Mutex::new(dbg.into_iter()));
+
+            crossbeam::scope(|scope| {
+
+                for _ in 0 .. IO_THREADS {
+                    let work_queue = work_queue.clone();
+                    let tx = tx.clone();
+
+                    scope.spawn(move || {
+                        loop {
+
+                            let node =
+                                match work_queue.lock().unwrap().next() {
+                                    None => break,
+                                    Some(val) => val,
+                                };
+
+                            let mut indices: Vec<u64> = Vec::new();
+
+                            for kmer in node {
+                                let index = match mphf_ref.try_hash(&kmer) {
+                                    None => panic!("can't find in hash"),
+                                    Some(index) => index.clone(),
+                                };
+                                indices.push(index);
+                            }
+
+                            tx.send(indices).unwrap();
+
+                        } //end-loop
+                    }); //end-scope
+                } //end-threads-for
+
+                drop(tx);
+                for data in rx.iter(){
+                    for (offset, index) in data.iter().enumerate() {
+                        offsets[*index as usize] = offset as u32;
+                    }
+                }
+            }); //end-crossbeam
+
+            info!("Starting Dumping offsets");
+            let off_file_name = index_path.to_owned() + "/offsets.bin";
+            write_obj(&offsets, off_file_name).expect("Can't dump offsets");
+        } //end -offset scope
     }
 
     pub fn read(index_path: &str) -> Index<K, D> {
@@ -117,6 +202,13 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
 
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
         let dbg = read_obj(dbg_file_name).expect("Can't read debruijn graph");
+
+        //let phf = boomphf::NoKeyBoomHashMap2 {
+        //    mphf: mphf,
+        //    phantom: PhantomData,
+        //    values: node_ids,
+        //    aux_values: offsets,
+        //};
 
         let phf_file_name = index_path.to_owned() + "/phf.bin";
         let phf = read_obj(phf_file_name).expect("Can't read phf");

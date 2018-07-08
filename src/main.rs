@@ -165,7 +165,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     let queue = Arc::new(work_queue::WorkQueue::new());
     let mut buckets: Vec<Vec<(DnaStringSlice, Exts, S)>> = vec![Vec::new(); uhs.len()];
 
-    info!("Spawning {} threads for Bucketing.", MAX_WORKER);
+    info!("Spawning {} threads for Bucketing.\n", MAX_WORKER);
     crossbeam::scope(|scope| {
 
         for _ in 0 .. MAX_WORKER {
@@ -243,7 +243,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
         let atomic_buckets = Arc::new(Mutex::new(big_buckets));
         let queue = Arc::new(work_queue::WorkQueue::new());
 
-        info!("Spawning {} threads for Analyzing.", MAX_WORKER);
+        info!("Spawning {} threads for Analyzing.\n", MAX_WORKER);
         crossbeam::scope(|scope| {
             for _ in 0 .. MAX_WORKER {
                 let tx = tx.clone();
@@ -280,16 +280,17 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     }
 
     println!();
-    info!("Done seprate de-bruijn graph construction; ");
-    info!("Starting merge");
+    info!("Done seprate de-bruijn graph construction");
+    info!("Starting merging disjoint graphs");
 
     // Thread pool Configuration for calling BOOMphf
     rayon::ThreadPoolBuilder::new().num_threads(MAX_WORKER).build_global().unwrap();
 
     //println!("{:?}", summarizer);
     let full_dbg = work_queue::merge_graphs(dbgs);
-    let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
+    info!("Merger of graph Complete");
 
+    let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
     utils::Index::dump(full_dbg, gene_order,
                        eq_classes,
                        index_file);
@@ -426,7 +427,9 @@ fn main() {
              .requires("index")
              .requires("fasta"))
         .get_matches();
-    pretty_env_logger::init();
+
+    // initializing logger
+    pretty_env_logger::init_timed();
 
     // obtain reader or fail with error (via the unwrap method)
     let index_file = matches.values_of("index").unwrap().next().unwrap();
