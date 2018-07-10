@@ -6,7 +6,7 @@ pub const MEM_SIZE: usize = 1;
 pub const MIN_KMERS: usize = 1;
 pub const STRANDED: bool = true;
 pub const REPORT_ALL_KMER: bool = false;
-pub const READ_COVERAGE_THRESHOLD: usize = 0;
+pub const READ_COVERAGE_THRESHOLD: usize = 32;
 pub const BUCKET_SIZE_THRESHOLD: usize = 500;
 
 pub const U8_MAX: usize = u8::max_value() as usize;

@@ -145,15 +145,24 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let mut node_id = None;
     let mut kmer_offset = None;
 
-    let get_node_id = | kmer_pos: &mut usize |
-                                  -> Option<(usize, usize)>{
+    let get_data = | kmer_pos: &mut usize |
+                                  -> Option<(usize, usize)> {
         while *kmer_pos <= last_kmer_pos {
             let read_kmer = read_seq.get_kmer(*kmer_pos);
 
             match phf.get(&read_kmer) {
                 None => (),
-                Some((nid, offset)) => {
-                    return Some((*nid, *offset as usize));
+                Some((&nid, &offset)) => {
+
+                    let node = dbg.get_node( nid );
+                    let ref_seq_slice = node.sequence();
+
+                    let read_kmer = read_seq.get_kmer::<KmerType>(*kmer_pos);
+                    let ref_kmer = ref_seq_slice.get_kmer::<KmerType>(offset as usize);
+
+                    if read_kmer == ref_kmer {
+                        return Some((nid, offset as usize));
+                    }
                 }
             };
             *kmer_pos += 1;
@@ -162,39 +171,8 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
         return None;
     };
 
-    let get_node = | node_id: &mut Option<usize>,
-                     kmer_pos: &mut usize,
-                     kmer_offset: &mut Option<usize> |
-                             -> Option<Node<KmerType, EqClassIdType>> {
-        loop {
-            let node = dbg.get_node( node_id.unwrap() );
-            let ref_seq_slice = node.sequence();
-
-            let read_kmer = read_seq.get_kmer::<KmerType>(*kmer_pos);
-            let ref_kmer = ref_seq_slice.get_kmer::<KmerType>(kmer_offset.unwrap());
-
-            if read_kmer != ref_kmer {
-                *kmer_pos += 1;
-                match get_node_id(kmer_pos){
-                    None => return None,
-                    Some((nid, offset)) => {
-                        *node_id = Some(nid);
-                        *kmer_offset = Some(offset);
-                    },
-                };
-            }
-            else{
-                return Some(node);
-            }
-
-            if *kmer_pos > last_kmer_pos {
-                return None;
-            }
-        }
-    };
-
     // get the first match through mphf
-    match get_node_id(&mut kmer_pos) {
+    match get_data(&mut kmer_pos) {
         None => (),
         Some((nid, offset)) => {
             node_id = Some(nid);
@@ -204,14 +182,11 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
 
     if kmer_pos <= last_kmer_pos {
         loop {
-            let node = match get_node(&mut node_id,
-                                      &mut kmer_pos,
-                                      &mut kmer_offset) {
-                None => break,
-                Some(node) => node,
-            };
-            //let node = dbg.get_node(0);
-
+            let node = dbg.get_node(node_id.unwrap());
+            //println!("{:?}, {:?}, {:?}, {:?}",
+            //         node, node.sequence(),
+            //         &eq_classes[ *node.data() as usize],
+            //         kmer_offset);
             kmer_pos += kmer_length;
             read_coverage += kmer_length;
 
@@ -231,14 +206,22 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             // find maximum extention possbile before fork or eof read
             let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
 
+            let mut premature_break = false;
             let mut matched_bases = 0;
+            let mut seen_snp = 0;
             for idx in 0..max_matchable_pos {
                 let ref_pos = ref_offset + idx;
                 let read_offset = kmer_pos + idx;
 
                 // compare base by base
                 if ref_seq_slice.get( ref_pos ) != read_seq.get( read_offset ) {
-                    break;
+                    if seen_snp > 3 {
+                        premature_break = true;
+                        break;
+                    }
+
+                    // Allowing 2-SNP
+                    seen_snp += 1;
                 }
 
                 matched_bases += 1;
@@ -246,8 +229,8 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             }
 
             kmer_pos += matched_bases;
-            //break the loop if eof read reached
-            if kmer_pos >= read_length {
+            //break the loop if eof read reached or a premature mismatch
+            if kmer_pos >= read_length || premature_break {
                 break;
             }
 
@@ -273,14 +256,22 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
                 read_coverage -= kmer_length - 1;
             }
             else{
-                // can't extend node in dbg
-                break;
-            }
+                // can't extend node in dbg extract read using mphf
+                // TODO: might have to check some cases
+                if kmer_pos > last_kmer_pos {
+                    // can't search in mphf if no full kmer can be made
+                    break;
+                }
 
-            //println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
-            //         ref_node, ref_seq_slice, colors,
-            //         kmer_pos, remaining_read, informative_ref,
-            //         max_matchable_pos, kmer, *ref_offset);
+                // get the match through mphf
+                match get_data(&mut kmer_pos) {
+                    None => break,
+                    Some((nid, offset)) => {
+                        node_id = Some(nid);
+                        kmer_offset = Some(offset);
+                    },
+                };
+            }
         } // end-loop
     }//end-if
 
