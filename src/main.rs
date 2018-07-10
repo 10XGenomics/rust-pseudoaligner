@@ -309,7 +309,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
     let phf = index.get_phf();
     let eq_classes = index.get_eq_classes();
 
-    info!("Spawning {} threads for Mapping.", MAX_WORKER);
+    info!("Spawning {} threads for Mapping.\n", MAX_WORKER);
     crossbeam::scope(|scope| {
         for _ in 0 .. MAX_WORKER {
             let tx = tx.clone();
@@ -331,19 +331,30 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
 
                             let wrapped_read_data = match read_data {
                                 Some((eq_class, coverage)) => {
-                                    Some((record.id().to_owned(), eq_class, coverage))
+
+                                    if coverage >= READ_COVERAGE_THRESHOLD &&
+                                        eq_class.len() > 0 {
+                                        Some((true, record.id().to_owned(),
+                                              eq_class, coverage))
+                                    }
+                                    else{
+                                        Some((false, record.id().to_owned(),
+                                              eq_class, coverage))
+                                    }
                                 },
-                                None => Some(("".to_string(), Vec::new(), 0)),
+                                None => Some((false, record.id().to_owned(),
+                                              Vec::new(), 0))
                             };
 
                             tx.send(wrapped_read_data).expect("Could not send data!");
                         },
-                        None => { break; },
+                        None => {
+                            // send None to tell receiver that the queue ended
+                            tx.send(None).expect("Could not send data!");
+                            break;
+                        },
                     }; //end-match
                 } // end loop
-
-                // send None to tell receiver that the thread exited
-                tx.send(None).expect("Could not send data!");
             }); //end-scope
         } // end-for
 
@@ -369,25 +380,25 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                     }
                 },
                 Some(read_data) => {
-                    read_counter += 1;
-                    if read_counter % 100000 == 0 {
-                        let frac_mapped = mapped_read_counter as f32 * 100.0 / read_counter as f32;
-                        print!("\rDone Mapping {} reads w/ Rate: {}",
-                               read_counter, frac_mapped);
-                        io::stdout().flush().ok().expect("Could not flush stdout");
+                    println!("{:?}", read_data);
+
+                    if read_data.0 {
+                        mapped_read_counter += 1;
                     }
 
-                    let (read_id, eq_class, coverage) = read_data;
-                    if coverage >= READ_COVERAGE_THRESHOLD && eq_class.len() > 0 {
-                        mapped_read_counter += 1;
-                        eprintln!("{}=>{:?},{}", read_id, eq_class, coverage);
+                    read_counter += 1;
+                    if read_counter % 1000000 == 0 {
+                        let frac_mapped = mapped_read_counter as f32 * 100.0 / read_counter as f32;
+                        eprint!("\rDone Mapping {} reads w/ Rate: {}",
+                                read_counter, frac_mapped);
+                        io::stderr().flush().ok().expect("Could not flush stdout");
                     }
                 } // end-Some
             } // end-match
         } // end-for
     }); //end crossbeam
 
-    println!();
+    eprintln!();
     info!("Done Mapping Reads");
 }
 

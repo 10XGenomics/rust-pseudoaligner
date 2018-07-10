@@ -133,94 +133,189 @@ pub fn map<S>(read_seq: DnaString,
               phf: &boomphf::NoKeyBoomHashMap2<KmerType, usize, u32>)
               -> Option<(Vec<S>, usize)>
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
-    let mut all_colors: Vec<Vec<S>> = Vec::new();
     let read_length = read_seq.len();
+    let mut read_coverage: usize = 0;
+    let mut colors: Vec<u32> = Vec::new();
 
-    let mut kmer_pos = 0;
-    let mut kmer = read_seq.first_kmer();
+    let mut kmer_pos: usize = 0;
     let kmer_length = KmerType::k();
     let last_kmer_pos = read_length - kmer_length;
-    let mut read_coverage: usize = 0;
 
-    while kmer_pos <= last_kmer_pos {
-        match phf.get(&kmer) {
-            None => kmer_pos += 1,
-            Some((nid, ref_offset)) => {
+    // extract the first exact matching position of read
+    let mut node_id = None;
+    let mut kmer_offset = None;
 
-                // get the node
-                let ref_node = dbg.get_node(*nid);
-                let ref_seq_slice = ref_node.sequence();
+    let get_node_id = | kmer_pos: &mut usize |
+                                  -> Option<(usize, usize)>{
+        while *kmer_pos <= last_kmer_pos {
+            let read_kmer = read_seq.get_kmer(*kmer_pos);
 
-                if ref_seq_slice.get_kmer::<KmerType>(*ref_offset as usize) == kmer {
-                    // increment counter since found the kmer
-                    kmer_pos += kmer_length;
-                    read_coverage += kmer_length;
-                    let remaining_read = read_length - kmer_pos;
-
-                    let ref_length = ref_seq_slice.len();
-                    let reference_offset: usize = *ref_offset as usize;
-                    let informative_ref = ref_length - reference_offset - kmer_length;
-                    let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
-
-                    for idx in 0..max_matchable_pos {
-                        let ref_pos = reference_offset + kmer_length + idx;
-                        let read_pos = kmer_pos;
-
-                        // compare base by base
-                        if ref_seq_slice.get(ref_pos) != read_seq.get(read_pos) {
-                            break;
-                        }
-
-                        read_coverage += 1;
-                        kmer_pos += 1;
-                    }
-
-                    // extract colors
-                    let eq_id = ref_node.data();
-                    let colors = &eq_classes[*eq_id as usize];
-
-                    //println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
-                    //         ref_node, ref_seq_slice, colors,
-                    //         kmer_pos, remaining_read, informative_ref,
-                    //         max_matchable_pos, kmer, *ref_offset);
-
-                    all_colors.push(colors.clone());
-                } // end-if for matching kmer in mphf
-                else{
-                    kmer_pos += 1;
+            match phf.get(&read_kmer) {
+                None => (),
+                Some((nid, offset)) => {
+                    return Some((*nid, *offset as usize));
                 }
-            } // end-Some
-        }//end-match
-
-        if kmer_pos > last_kmer_pos {
-            break;
+            };
+            *kmer_pos += 1;
         }
-        kmer = read_seq.get_kmer(kmer_pos);
-    }// end-while
+
+        return None;
+    };
+
+    let get_node = | node_id: &mut Option<usize>,
+                     kmer_pos: &mut usize,
+                     kmer_offset: &mut Option<usize> |
+                             -> Option<Node<KmerType, EqClassIdType>> {
+        loop {
+            let node = dbg.get_node( node_id.unwrap() );
+            let ref_seq_slice = node.sequence();
+
+            let read_kmer = read_seq.get_kmer::<KmerType>(*kmer_pos);
+            let ref_kmer = ref_seq_slice.get_kmer::<KmerType>(kmer_offset.unwrap());
+
+            if read_kmer != ref_kmer {
+                *kmer_pos += 1;
+                match get_node_id(kmer_pos){
+                    None => return None,
+                    Some((nid, offset)) => {
+                        *node_id = Some(nid);
+                        *kmer_offset = Some(offset);
+                    },
+                };
+            }
+            else{
+                return Some(node);
+            }
+
+            if *kmer_pos > last_kmer_pos {
+                return None;
+            }
+        }
+    };
+
+    // get the first match through mphf
+    match get_node_id(&mut kmer_pos) {
+        None => (),
+        Some((nid, offset)) => {
+            node_id = Some(nid);
+            kmer_offset = Some(offset);
+        },
+    };
+
+    if kmer_pos <= last_kmer_pos {
+        loop {
+            let node = match get_node(&mut node_id,
+                                      &mut kmer_pos,
+                                      &mut kmer_offset) {
+                None => break,
+                Some(node) => node,
+            };
+            //let node = dbg.get_node(0);
+
+            kmer_pos += kmer_length;
+            read_coverage += kmer_length;
+
+            // extract colors
+            let color = node.data();
+            colors.push(*color);
+
+            // length of remaining read after kmer match
+            let remaining_read = read_length - kmer_pos;
+
+            // length of the remaining node sequence after kmer match
+            let ref_seq_slice = node.sequence();
+            let ref_length = ref_seq_slice.len();
+            let ref_offset = kmer_offset.unwrap() + kmer_length;
+            let informative_ref = ref_length - ref_offset;
+
+            // find maximum extention possbile before fork or eof read
+            let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
+
+            let mut matched_bases = 0;
+            for idx in 0..max_matchable_pos {
+                let ref_pos = ref_offset + idx;
+                let read_offset = kmer_pos + idx;
+
+                // compare base by base
+                if ref_seq_slice.get( ref_pos ) != read_seq.get( read_offset ) {
+                    break;
+                }
+
+                matched_bases += 1;
+                read_coverage += 1;
+            }
+
+            kmer_pos += matched_bases;
+            //break the loop if eof read reached
+            if kmer_pos >= read_length {
+                break;
+            }
+
+            // If reached here then a fork is found in the reference.
+            let exts = node.exts();
+            let next_base = read_seq.get( kmer_pos );
+
+            if exts.has_ext(Dir::Right, next_base) {
+                // found a right extention.
+                let index = exts.get(Dir::Right)
+                    .iter()
+                    .position(|&x| x == next_base)
+                    .unwrap();
+
+                let edge = node.r_edges()[index];
+
+                //update the next node's id
+                node_id = Some(edge.0);
+                kmer_offset = Some(0);
+
+                //adjust for kmer_position
+                kmer_pos -= kmer_length - 1;
+                read_coverage -= kmer_length - 1;
+            }
+            else{
+                // can't extend node in dbg
+                break;
+            }
+
+            //println!("{:?}, {:?}, {:?}, {:?}, {:?} {:?}, {:?}, {:?}, {:?}",
+            //         ref_node, ref_seq_slice, colors,
+            //         kmer_pos, remaining_read, informative_ref,
+            //         max_matchable_pos, kmer, *ref_offset);
+        } // end-loop
+    }//end-if
 
     // Take the intersection of the sets
-    let total_classes = all_colors.len();
-    if total_classes == 0 {
+    let colors_len = colors.len();
+    if colors_len == 0 {
         if read_coverage != 0 {
             panic!("Different read coverage {:?} than num of eqclasses {:?}",
-                   total_classes, read_coverage);
+                   colors_len, read_coverage);
         }
 
         return None
     }
     else{
-        let eq_classes: Vec<S> = all_colors.pop().unwrap();
-        if total_classes == 1 {
-            return Some((eq_classes, read_coverage))
+        let color: u32 = colors.pop().unwrap();
+        let eq_class: Vec<S> = eq_classes[color as usize].to_owned();
+
+        if colors_len == 1 {
+            return Some((eq_class, read_coverage))
         }
 
-        let mut eq_class_set: HashSet<S> = eq_classes.into_iter().collect();
-        for colors in all_colors {
-            let colors_set: HashSet<S> = colors.into_iter().collect();
-            eq_class_set = eq_class_set.intersection(&colors_set).cloned().collect();
+        let mut eq_class_set: HashSet<S> = eq_class.into_iter().collect();
+        for color in colors {
+            let eq_class: HashSet<S> = eq_classes[color as usize]
+                .to_owned()
+                .into_iter()
+                .collect();
+
+            eq_class_set = eq_class_set
+                .intersection(&eq_class)
+                .cloned()
+                .collect();
         }
 
-        let eq_classes: Vec<S> = eq_class_set.into_iter().collect();
-        return Some((eq_classes, read_coverage))
+        let eq_classes_vec: Vec<S> = eq_class_set.into_iter().collect();
+        return Some((eq_classes_vec, read_coverage))
     }
 }

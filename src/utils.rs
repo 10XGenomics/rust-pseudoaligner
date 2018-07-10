@@ -74,10 +74,12 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         for node in dbg.iter_nodes() {
             total_kmers += node.len()-kmer_length+1;
         }
+
         info!("Total {:?} kmers to process in dbg", total_kmers);
         let mphf = boomphf::Mphf::new_parallel_with_keys(1.7, &dbg, None,
                                                          total_kmers,
                                                          MAX_WORKER);
+
         let phf_file_name = index_path.to_owned() + "/phf.bin";
         write_obj(&mphf, phf_file_name).expect("Can't dump phf");
 
@@ -87,7 +89,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         {
             let mut node_ids = vec![0; total_kmers];
             let mphf_ref = &mphf;
-            let (tx, rx) = sync_channel(2 * IO_THREADS);
+            let (tx, rx) = sync_channel(IO_THREADS);
 
             let work_queue = Arc::new(Mutex::new(dbg.into_iter()));
 
@@ -140,7 +142,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         {
             let mut offsets: Vec<u32> = vec![0; total_kmers];
             let mphf_ref = &mphf;
-            let (tx, rx) = sync_channel(2 * IO_THREADS);
+            let (tx, rx) = sync_channel(IO_THREADS);
 
             let work_queue = Arc::new(Mutex::new(dbg.into_iter()));
 
@@ -203,16 +205,17 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
         let dbg = read_obj(dbg_file_name).expect("Can't read debruijn graph");
 
-        //let phf = boomphf::NoKeyBoomHashMap2 {
-        //    mphf: mphf,
-        //    phantom: PhantomData,
-        //    values: node_ids,
-        //    aux_values: offsets,
-        //};
-
         let phf_file_name = index_path.to_owned() + "/phf.bin";
         let phf = read_obj(phf_file_name).expect("Can't read phf");
 
+        let pos_file_name = index_path.to_owned() + "/positions.bin";
+        let positions = read_obj(pos_file_name).expect("Can't read pos");
+
+        let off_file_name = index_path.to_owned() + "/offsets.bin";
+        let offsets = read_obj(off_file_name).expect("Can't read offsets");
+
+        let phf = boomphf::NoKeyBoomHashMap2::new_with_mphf( phf, positions,
+                                                             offsets );
         Index{
             eqclasses: eq_classes,
             dbg: dbg,
