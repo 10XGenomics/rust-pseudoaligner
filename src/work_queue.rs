@@ -136,6 +136,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let read_length = read_seq.len();
     let mut read_coverage: usize = 0;
     let mut colors: Vec<u32> = Vec::new();
+    let left_extend_threshold = (0.4 * read_length as f32 ) as usize;
 
     let mut kmer_pos: usize = 0;
     let kmer_length = KmerType::k();
@@ -180,6 +181,89 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
         },
     };
 
+    // check if we can extend back if there were SNP in every kmer query
+    if kmer_pos >= left_extend_threshold && ! node_id.is_none() {
+        let mut last_pos = kmer_pos - 1;
+        let mut prev_node_id = node_id.unwrap();
+        let mut prev_kmer_offset = kmer_offset.unwrap() - 1;
+
+        loop {
+            let node = dbg.get_node(prev_node_id);
+            //println!("{:?}, {:?}, {:?}, {:?}, {:?}",
+            //         node, node.sequence(),
+            //         &eq_classes[ *node.data() as usize],
+            //         prev_kmer_offset, last_pos);
+
+
+            // length of remaining read before kmer match
+            let skipped_read = last_pos + 1;
+
+            // length of the skipped node sequence before kmer match
+            let skipped_ref = prev_kmer_offset + 1;
+
+            // find maximum extention possbile before fork or eof read
+            let max_matchable_pos = std::cmp::min(skipped_read, skipped_ref);
+
+            let ref_seq_slice = node.sequence();
+            let mut premature_break = false;
+            let mut matched_bases = 0;
+            let mut seen_snp = 0;
+            for idx in 0..max_matchable_pos {
+                let ref_pos = prev_kmer_offset - idx;
+                let read_offset = last_pos - idx;
+
+                // compare base by base
+                if ref_seq_slice.get( ref_pos ) != read_seq.get( read_offset ) {
+                    if seen_snp > 3 {
+                        premature_break = true;
+                        break;
+                    }
+
+                    // Allowing 2-SNP
+                    seen_snp += 1;
+                }
+
+                matched_bases += 1;
+                read_coverage += 1;
+            }
+
+
+            //break the loop if end of read reached or a premature mismatch
+            if last_pos - matched_bases + 1 == 0 || premature_break {
+                break;
+            }
+
+            // adjust last position
+            last_pos -= matched_bases;
+
+            // If reached here then a fork is found in the reference.
+            let exts = node.exts();
+            let next_base = read_seq.get( last_pos );
+            if exts.has_ext(Dir::Left, next_base) {
+                // found a left extention.
+                let index = exts.get(Dir::Left)
+                    .iter()
+                    .position(|&x| x == next_base)
+                    .unwrap();
+
+                let edge = node.l_edges()[index];
+
+                //update the previous node's id
+                prev_node_id = edge.0;
+                let prev_node = dbg.get_node(prev_node_id);
+                prev_kmer_offset = prev_node.sequence().len() - kmer_length;
+
+                // extract colors
+                let color = prev_node.data();
+                colors.push(*color);
+            }
+            else {
+                break;
+            }
+        } // end-loop
+    } //end-if
+
+    // forward search
     if kmer_pos <= last_kmer_pos {
         loop {
             let node = dbg.get_node(node_id.unwrap());
@@ -229,8 +313,8 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             }
 
             kmer_pos += matched_bases;
-            //break the loop if eof read reached or a premature mismatch
-            if kmer_pos >= read_length || premature_break {
+            //break the loop if end of read reached or a premature mismatch
+            if kmer_pos >= read_length {
                 break;
             }
 
@@ -238,7 +322,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             let exts = node.exts();
             let next_base = read_seq.get( kmer_pos );
 
-            if exts.has_ext(Dir::Right, next_base) {
+            if !premature_break && exts.has_ext(Dir::Right, next_base) {
                 // found a right extention.
                 let index = exts.get(Dir::Right)
                     .iter()
