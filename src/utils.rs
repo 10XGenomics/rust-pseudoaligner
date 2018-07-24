@@ -16,7 +16,6 @@ use std::io::{BufRead, BufReader, BufWriter};
 
 //use bincode;
 use bincode;
-use boomphf;
 use crossbeam;
 use debruijn::Kmer;
 use serde::{Serialize};
@@ -24,6 +23,9 @@ use serde::de::DeserializeOwned;
 use debruijn::graph::DebruijnGraph;
 use debruijn::filter::EqClassIdType;
 use bincode::{serialize_into, deserialize_from};
+
+use boomphf;
+use boomphf::hashmap::{NoKeyBoomHashMap2};
 
 use failure::Error;
 use flate2::read::MultiGzDecoder;
@@ -35,7 +37,7 @@ pub struct Index<K, D>
 where K:Hash + Serialize, D: Eq + Hash + Serialize {
     eqclasses: Vec<Vec<D>>,
     dbg: DebruijnGraph<K, EqClassIdType>,
-    phf: boomphf::NoKeyBoomHashMap2<K, usize, u32>,
+    phf: NoKeyBoomHashMap2<K, usize, u32>,
 }
 
 impl<K, D> Index<K, D>
@@ -214,7 +216,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let off_file_name = index_path.to_owned() + "/offsets.bin";
         let offsets = read_obj(off_file_name).expect("Can't read offsets");
 
-        let phf = boomphf::NoKeyBoomHashMap2::new_with_mphf( phf, positions,
+        let phf = NoKeyBoomHashMap2::new_with_mphf( phf, positions,
                                                              offsets );
         Index{
             eqclasses: eq_classes,
@@ -223,7 +225,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         }
     }
 
-    pub fn get_phf(&self) -> &boomphf::NoKeyBoomHashMap2<K, usize, u32>{
+    pub fn get_phf(&self) -> &NoKeyBoomHashMap2<K, usize, u32>{
         &self.phf
     }
 

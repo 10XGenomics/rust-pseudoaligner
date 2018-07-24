@@ -28,11 +28,11 @@ version = ">=1.6.0"
 features = ["serde"]
 
 [dependencies.boomphf]
-path = "../../rust-boomphf"
-features = ["serde"]
+path = "rust-boomphf"
+features = ["serde", "fast-constructors"]
 
 [dependencies.debruijn]
-path = "../../rust-debruijn"
+path = "rust-debruijn"
 
 [dependencies.smallvec]
 version = "0.6.1"

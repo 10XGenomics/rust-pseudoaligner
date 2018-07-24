@@ -8,8 +8,6 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 
-use boomphf;
-//use pdqsort;
 use debruijn::*;
 use debruijn::graph::*;
 use debruijn::filter::*;
@@ -17,6 +15,7 @@ use bio::io::{fastq};
 use debruijn::compression::*;
 use docks::generate_msps;
 use debruijn::dna_string::{DnaString, DnaStringSlice};
+use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap2};
 use config::{KmerType, STRANDED, REPORT_ALL_KMER, MEM_SIZE, L, DocksUhs};
 
 pub struct WorkQueue{
@@ -91,13 +90,13 @@ where S: Clone + Eq + Hash + Ord + Debug + Send + Sync {
     if bucket_data.len() > 0 {
         //println!("{:?}", bucket_data);
         // run filter_kmer
-        let (phf, _) : (boomphf::BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
+        let (phf, _) : (BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
             filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &summarizer, STRANDED,
                                                  REPORT_ALL_KMER, MEM_SIZE);
 
         //println!("{:?}", phf);
         // compress the graph
-        let dbg = compress_kmers_with_hash(STRANDED, ScmapCompress::new(), phf);
+        let dbg = compress_kmers_with_hash(STRANDED, ScmapCompress::new(), &phf);
 
         return Some(dbg);
     }
@@ -130,7 +129,7 @@ where R: std::io::Read{
 pub fn map<S>(read_seq: DnaString,
               dbg: &DebruijnGraph<KmerType, EqClassIdType>,
               eq_classes: &Vec<Vec<S>>,
-              phf: &boomphf::NoKeyBoomHashMap2<KmerType, usize, u32>)
+              phf: &NoKeyBoomHashMap2<KmerType, usize, u32>)
               -> Option<(Vec<S>, usize)>
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     let read_length = read_seq.len();
