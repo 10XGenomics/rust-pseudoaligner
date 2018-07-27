@@ -91,9 +91,9 @@ where S: Clone + Eq + Hash + Ord + Debug + Send + Sync {
         //println!("{:?}", bucket_data);
         // run filter_kmer
         let (phf, _) : (BoomHashMap2<KmerType, Exts, EqClassIdType>, _) =
-            filter_kmers::<KmerType, _, _, _, _>(&bucket_data, &summarizer,
-                                                 STRANDED, REPORT_ALL_KMER,
-                                                 MEM_SIZE);
+            filter_kmers(&bucket_data, summarizer,
+                         STRANDED, REPORT_ALL_KMER,
+                         MEM_SIZE);
 
         //println!("{:?}", phf);
         // compress the graph

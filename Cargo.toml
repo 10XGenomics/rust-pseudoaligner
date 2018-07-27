@@ -19,16 +19,17 @@ rand = "0.4.2"
 csv = "1.0.0-beta.5"
 rayon = "1.0.1"
 
-[dependencies.pretty_env_logger] 
-# = "0.2.3"
-path = "../../pretty-env-logger"
+[dependencies.pretty_env_logger]
+git = "https://github.com/k3yavi/pretty-env-logger"
+branch = "master"
 
 [dependencies.extprim]
 version = ">=1.6.0"
 features = ["serde"]
 
 [dependencies.boomphf]
-path = "rust-boomphf"
+git = "https://github.com/10XGenomics/rust-boomphf"
+branch = "master"
 features = ["serde", "fast-constructors"]
 
 [dependencies.debruijn]
