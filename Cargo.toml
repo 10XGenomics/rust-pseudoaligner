@@ -1,7 +1,7 @@
 [package]
-name = "mapping"
+name = "pseudoaligner"
 version = "0.1.0"
-authors = ["avi.srivastava <avi.srivastava@10xgenomics.com>"]
+authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>"]
 
 [dependencies]
 bio = "*"
@@ -31,10 +31,6 @@ features = ["serde"]
 git = "https://github.com/10XGenomics/rust-boomphf"
 branch = "master"
 features = ["serde", "fast-constructors"]
-
-[dependencies.smallvec]
-version = "0.6.1"
-features = ["serde"]
 
 [dependencies.concurrent-hashmap]
 version = "0.2.1"

@@ -494,31 +494,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mapping"
-version = "0.1.0"
-dependencies = [
- "bincode 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "bio 0.22.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "boomphf 0.2.1 (git+https://github.com/10XGenomics/rust-boomphf)",
- "clap 2.31.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "concurrent-hashmap 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "crossbeam 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "csv 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "debruijn 0.2.0 (git+https://github.com/10XGenomics/rust-debruijn)",
- "extprim 1.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "flate2 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "itertools 0.7.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "pretty_env_logger 0.2.3 (git+https://github.com/k3yavi/pretty-env-logger)",
- "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "rayon 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 1.0.71 (registry+https://github.com/rust-lang/crates.io-index)",
- "smallvec 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "matrixmultiply"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -725,6 +700,30 @@ version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pseudoaligner"
+version = "0.1.0"
+dependencies = [
+ "bincode 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bio 0.22.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "boomphf 0.2.1 (git+https://github.com/10XGenomics/rust-boomphf)",
+ "clap 2.31.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "concurrent-hashmap 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "csv 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "debruijn 0.2.0 (git+https://github.com/10XGenomics/rust-debruijn)",
+ "extprim 1.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "flate2 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "itertools 0.7.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pretty_env_logger 0.2.3 (git+https://github.com/k3yavi/pretty-env-logger)",
+ "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rayon 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.71 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -938,7 +937,6 @@ name = "smallvec"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "serde 1.0.71 (registry+https://github.com/rust-lang/crates.io-index)",
  "unreachable 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
