@@ -1,17 +1,17 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
-extern crate debruijn;
-extern crate bio;
-extern crate clap;
-extern crate itertools;
-extern crate boomphf;
-extern crate pretty_env_logger;
 extern crate bincode;
-extern crate flate2;
-extern crate num;
-extern crate failure;
+extern crate bio;
+extern crate boomphf;
+extern crate clap;
 extern crate crossbeam;
 extern crate csv;
+extern crate debruijn;
+extern crate failure;
+extern crate flate2;
+extern crate itertools;
+extern crate num;
+extern crate pretty_env_logger;
 extern crate rayon;
 
 #[macro_use]
@@ -20,42 +20,43 @@ extern crate log;
 #[macro_use]
 extern crate serde;
 
-mod utils;
-mod docks;
-mod work_queue;
 mod config;
+mod docks;
+mod utils;
+mod work_queue;
 
 // Import some modules
-use std::io;
-use std::str;
-use std::fs::File;
-use std::ops::Add;
-use std::io::Write;
-use std::fmt::Debug;
-use std::hash::Hash;
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::fs::File;
+use std::hash::Hash;
+use std::io;
+use std::io::Write;
+use std::ops::Add;
+use std::str;
 
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
-use num::One;
+use bio::io::{fasta, fastq};
+use clap::{App, Arg};
 use num::Num;
 use num::NumCast;
-use clap::{Arg, App};
-use serde::Serialize;
-use bio::io::{fasta, fastq};
+use num::One;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
-use debruijn::{Exts};
 use debruijn::dna_string::*;
+use debruijn::Exts;
 
-use config::{U8_MAX, U16_MAX, U32_MAX, MAX_WORKER, BUCKET_SIZE_THRESHOLD, MIN_KMERS};
-use config::{READ_COVERAGE_THRESHOLD};
+use config::READ_COVERAGE_THRESHOLD;
 use config::{DocksUhs, KmerType};
+use config::{BUCKET_SIZE_THRESHOLD, MAX_WORKER, MIN_KMERS, U16_MAX, U32_MAX, U8_MAX};
 
-fn read_fasta(reader: fasta::Reader<File>,
-              tgmap_file: &str)
-              -> (Vec<Vec<DnaString>>, Vec<usize>, Vec<String>) {
+fn read_fasta(
+    reader: fasta::Reader<File>,
+    tgmap_file: &str,
+) -> (Vec<Vec<DnaString>>, Vec<usize>, Vec<String>) {
     let mut gene_id: usize = 0;
     let tgmap_reader = File::open(tgmap_file).expect("can't read tgmap file");
     let mut tgmap: HashMap<String, usize> = HashMap::new();
@@ -73,10 +74,9 @@ fn read_fasta(reader: fasta::Reader<File>,
         let transcript_name = &records[0];
         let gene_name = &records[1];
 
-        if gene_id_map.contains_key( gene_name ) {
+        if gene_id_map.contains_key(gene_name) {
             curr_gene_id = gene_id_map[gene_name];
-        }
-        else{
+        } else {
             curr_gene_id = gene_id;
             gene_id_map.insert(gene_name.to_string(), gene_id);
             gene_id += 1;
@@ -93,10 +93,12 @@ fn read_fasta(reader: fasta::Reader<File>,
     for result in reader.records() {
         // obtain record or fail with error
         let record = result.unwrap();
-        let dna_string = DnaString::from_dna_only_string( str::from_utf8(record.seq()).unwrap() );
+        let dna_string = DnaString::from_dna_only_string(str::from_utf8(record.seq()).unwrap());
         let record_id: Vec<&str> = record.id().split('|').collect();
 
-        let gene_id = tgmap.get(record_id[0]).expect("can't find fasta entry in tgMap");
+        let gene_id = tgmap
+            .get(record_id[0])
+            .expect("can't find fasta entry in tgMap");
         tgmap_vec.push(gene_id.clone());
 
         // obtain sequence and push into the relevant vector
@@ -114,52 +116,70 @@ fn read_fasta(reader: fasta::Reader<File>,
         //if transcript_counter > 1 { break };
     }
     println!();
-    info!("Done Reading the Fasta file; Found {} sequences", transcript_counter);
+    info!(
+        "Done Reading the Fasta file; Found {} sequences",
+        transcript_counter
+    );
 
     let mut gene_id_vec = vec!["".to_string(); gene_id_map.len()];
     for (gene, gid) in gene_id_map {
-        gene_id_vec[ gid ] = gene;
+        gene_id_vec[gid] = gene;
     }
 
     (seqs, tgmap_vec, gene_id_vec)
 }
 
-fn filter_kmers_callback(seqs: &[Vec<DnaString>], index_file: &str,
-                         uhs: &DocksUhs, tgmap: Vec<usize>,
-                         gene_order: Vec<String>) {
+fn filter_kmers_callback(
+    seqs: &[Vec<DnaString>],
+    index_file: &str,
+    uhs: &DocksUhs,
+    tgmap: Vec<usize>,
+    gene_order: Vec<String>,
+) {
     let seqs_len = seqs.len();
 
     // Based on the number of sequences chose the right primary datatype
     match seqs_len {
-        1 ...U8_MAX  => {
+        1...U8_MAX => {
             info!("Using 8 bit variable for storing the data.");
-            call_filter_kmers(seqs, index_file,
-                              uhs, u8::min_value(),
-                              tgmap, gene_order);
-        },
-        U8_MAX ... U16_MAX => {
+            call_filter_kmers(seqs, index_file, uhs, u8::min_value(), tgmap, gene_order);
+        }
+        U8_MAX...U16_MAX => {
             info!("Using 16 bit variable for storing the data.");
-            call_filter_kmers(seqs, index_file,
-                              uhs, u16::min_value(),
-                              tgmap, gene_order);
-        },
-        U16_MAX ... U32_MAX => {
+            call_filter_kmers(seqs, index_file, uhs, u16::min_value(), tgmap, gene_order);
+        }
+        U16_MAX...U32_MAX => {
             info!("Using 32 bit variable for storing the data.");
-            call_filter_kmers::<u32>(&seqs, index_file,
-                                     &uhs, u32::min_value(),
-                                     tgmap, gene_order);
-        },
+            call_filter_kmers::<u32>(&seqs, index_file, &uhs, u32::min_value(), tgmap, gene_order);
+        }
         _ => {
             error!("Too many ({}) sequneces to handle.", seqs_len);
-        },
+        }
     };
 }
 
-fn call_filter_kmers<S>(seqs: &[Vec<DnaString>], index_file: &str,
-                        uhs: &DocksUhs, _seq_id: S, tgmap: Vec<usize>,
-                        gene_order: Vec<String>)
-where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
-    + Send + Sync + Num + NumCast + DeserializeOwned {
+fn call_filter_kmers<S>(
+    seqs: &[Vec<DnaString>],
+    index_file: &str,
+    uhs: &DocksUhs,
+    _seq_id: S,
+    tgmap: Vec<usize>,
+    gene_order: Vec<String>,
+) where
+    S: Clone
+        + Hash
+        + Eq
+        + Debug
+        + Ord
+        + Serialize
+        + One
+        + Add<Output = S>
+        + Send
+        + Sync
+        + Num
+        + NumCast
+        + DeserializeOwned,
+{
     info!("Starting Bucketing");
     let (tx, rx) = mpsc::sync_channel(MAX_WORKER);
     let num_seqs = seqs.len();
@@ -168,8 +188,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
 
     info!("Spawning {} threads for Bucketing.\n", MAX_WORKER);
     crossbeam::scope(|scope| {
-
-        for _ in 0 .. MAX_WORKER {
+        for _ in 0..MAX_WORKER {
             let tx = tx.clone();
             let queue = Arc::clone(&queue);
 
@@ -178,17 +197,21 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
                     // If work is available, do that work.
                     match queue.get_work(seqs) {
                         Some((seq, head)) => {
-                            let thread_data =  work_queue::run(seq, uhs);
+                            let thread_data = work_queue::run(seq, uhs);
                             tx.send((thread_data, head)).expect("Could not send data!");
 
                             let done = queue.len();
                             if done % 10 == 0 {
-                                print!("\rDone Bucketing {}% of the reference sequences",
-                                       std::cmp::min(100, done*100/num_seqs));
+                                print!(
+                                    "\rDone Bucketing {}% of the reference sequences",
+                                    std::cmp::min(100, done * 100 / num_seqs)
+                                );
                                 io::stdout().flush().expect("Could not flush stdout");
                             }
-                          },
-                        None => { break; },
+                        }
+                        None => {
+                            break;
+                        }
                     };
                 } // end loop
             });
@@ -221,8 +244,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
         if num_elem != 0 {
             if num_elem > BUCKET_SIZE_THRESHOLD {
                 big_buckets.push(bucket);
-            }
-            else{
+            } else {
                 for elem in bucket {
                     small_bucket.push(elem);
                 }
@@ -232,7 +254,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
 
     // do all small buckets at once
     let mut num_buckets = big_buckets.len();
-    big_buckets.insert(num_buckets/2, small_bucket);
+    big_buckets.insert(num_buckets / 2, small_bucket);
     num_buckets += 1;
 
     let mut dbgs = Vec::new();
@@ -246,7 +268,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
 
         info!("Spawning {} threads for Analyzing.\n", MAX_WORKER);
         crossbeam::scope(|scope| {
-            for _ in 0 .. MAX_WORKER {
+            for _ in 0..MAX_WORKER {
                 let tx = tx.clone();
                 let queue = Arc::clone(&queue);
                 let bucket_ref = Arc::clone(&atomic_buckets);
@@ -257,17 +279,22 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
                         // If work is available, do that work.
                         match queue.get_rev_work(&bucket_ref) {
                             Some((bucket_data, _)) => {
-                                let thread_data = work_queue::analyze(&bucket_data, &summarizer_ref);
+                                let thread_data =
+                                    work_queue::analyze(&bucket_data, &summarizer_ref);
                                 tx.send(thread_data).expect("Could not send data!");
 
                                 let done = queue.len();
                                 if done % 10 == 0 {
-                                    print!("\rDone Analyzing {}% of the buckets",
-                                           done*100/num_buckets);
+                                    print!(
+                                        "\rDone Analyzing {}% of the buckets",
+                                        done * 100 / num_buckets
+                                    );
                                     io::stdout().flush().expect("Could not flush stdout");
                                 }
-                            },
-                            None => { break; },
+                            }
+                            None => {
+                                break;
+                            }
                         };
                     } // end loop
                 });
@@ -285,7 +312,10 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     info!("Starting merging disjoint graphs");
 
     // Thread pool Configuration for calling BOOMphf
-    rayon::ThreadPoolBuilder::new().num_threads(MAX_WORKER).build_global().unwrap();
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(MAX_WORKER)
+        .build_global()
+        .unwrap();
 
     //println!("{:?}", summarizer);
     let full_dbg = work_queue::merge_graphs(dbgs);
@@ -295,9 +325,10 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     utils::Index::dump(&full_dbg, gene_order, &eq_classes, index_file);
 }
 
-fn process_reads<S>(index: &utils::Index<KmerType, S>,
-                    reader: fastq::Reader<File>)
-where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + DeserializeOwned {
+fn process_reads<S>(index: &utils::Index<KmerType, S>, reader: fastq::Reader<File>)
+where
+    S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + DeserializeOwned,
+{
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
 
@@ -310,7 +341,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
 
     info!("Spawning {} threads for Mapping.\n", MAX_WORKER);
     crossbeam::scope(|scope| {
-        for _ in 0 .. MAX_WORKER {
+        for _ in 0..MAX_WORKER {
             let tx = tx.clone();
             let reader = Arc::clone(&atomic_reader);
 
@@ -325,33 +356,27 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                             };
 
                             let dna_string = str::from_utf8(record.seq()).unwrap();
-                            let seqs = DnaString::from_dna_string( dna_string );
+                            let seqs = DnaString::from_dna_string(dna_string);
                             let read_data = work_queue::map(seqs, dbg, eq_classes, phf);
 
                             let wrapped_read_data = match read_data {
                                 Some((eq_class, coverage)) => {
-
-                                    if coverage >= READ_COVERAGE_THRESHOLD &&
-                                        eq_class.len() > 0 {
-                                        Some((true, record.id().to_owned(),
-                                              eq_class, coverage))
+                                    if coverage >= READ_COVERAGE_THRESHOLD && eq_class.len() > 0 {
+                                        Some((true, record.id().to_owned(), eq_class, coverage))
+                                    } else {
+                                        Some((false, record.id().to_owned(), eq_class, coverage))
                                     }
-                                    else{
-                                        Some((false, record.id().to_owned(),
-                                              eq_class, coverage))
-                                    }
-                                },
-                                None => Some((false, record.id().to_owned(),
-                                              Vec::new(), 0))
+                                }
+                                None => Some((false, record.id().to_owned(), Vec::new(), 0)),
                             };
 
                             tx.send(wrapped_read_data).expect("Could not send data!");
-                        },
+                        }
                         None => {
                             // send None to tell receiver that the queue ended
                             tx.send(None).expect("Could not send data!");
                             break;
-                        },
+                        }
                     }; //end-match
                 } // end loop
             }); //end-scope
@@ -377,7 +402,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                         }
                         break;
                     }
-                },
+                }
                 Some(read_data) => {
                     println!("{:?}", read_data);
 
@@ -388,8 +413,10 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                     read_counter += 1;
                     if read_counter % 1_000_000 == 0 {
                         let frac_mapped = mapped_read_counter as f32 * 100.0 / read_counter as f32;
-                        eprint!("\rDone Mapping {} reads w/ Rate: {}",
-                                read_counter, frac_mapped);
+                        eprint!(
+                            "\rDone Mapping {} reads w/ Rate: {}",
+                            read_counter, frac_mapped
+                        );
                         io::stderr().flush().expect("Could not flush stdout");
                     }
                 } // end-Some
@@ -401,42 +428,48 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
     info!("Done Mapping Reads");
 }
 
-
 fn main() {
     let matches = App::new("De-bruijn-mapping")
         .version("1.0")
         .author("Avi S. <avi.srivastava@10xgenomics.com>")
         .about("De-bruijn graph based lightweight mapping for single-cell data")
-        .arg(Arg::with_name("fasta")
-             .short("f")
-             .long("fasta")
-             .value_name("FILE")
-             .help("Txome/Genome Input Fasta file, (Needed only with -m i.e. while making index)"))
-        .arg(Arg::with_name("reads")
-             .short("r")
-             .long("reads")
-             .value_name("FILE")
-             .help("Input Read Fastq file"))
-        .arg(Arg::with_name("tgMap")
-             .short("t")
-             .long("tgMap")
-             .value_name("FILE")
-             .help("Transcript to Gene Mapping file")
-             .requires("fasta"))
-        .arg(Arg::with_name("index")
-             .short("i")
-             .long("index")
-             .value_name("FILE")
-             .help("Index of the reference")
-             .required(true))
-        .arg(Arg::with_name("make")
-             .help("tells to make the index")
-             .short("m")
-             .long("make")
-             .requires("tgMap")
-             .requires("index")
-             .requires("fasta"))
-        .get_matches();
+        .arg(
+            Arg::with_name("fasta")
+                .short("f")
+                .long("fasta")
+                .value_name("FILE")
+                .help(
+                    "Txome/Genome Input Fasta file, (Needed only with -m i.e. while making index)",
+                ),
+        ).arg(
+            Arg::with_name("reads")
+                .short("r")
+                .long("reads")
+                .value_name("FILE")
+                .help("Input Read Fastq file"),
+        ).arg(
+            Arg::with_name("tgMap")
+                .short("t")
+                .long("tgMap")
+                .value_name("FILE")
+                .help("Transcript to Gene Mapping file")
+                .requires("fasta"),
+        ).arg(
+            Arg::with_name("index")
+                .short("i")
+                .long("index")
+                .value_name("FILE")
+                .help("Index of the reference")
+                .required(true),
+        ).arg(
+            Arg::with_name("make")
+                .help("tells to make the index")
+                .short("m")
+                .long("make")
+                .requires("tgMap")
+                .requires("index")
+                .requires("fasta"),
+        ).get_matches();
 
     // initializing logger
     pretty_env_logger::init_timed();
@@ -453,7 +486,11 @@ fn main() {
         info!("Path for reference FASTA: {}", fasta_file);
 
         // obtain reader or fail with error (via the unwrap method)
-        let tgmap_file = matches.values_of("tgMap").unwrap().next().expect("no tgmap file found");
+        let tgmap_file = matches
+            .values_of("tgMap")
+            .unwrap()
+            .next()
+            .expect("no tgmap file found");
 
         // if index not found then create a new one
         let reader = fasta::Reader::from_file(fasta_file).unwrap();
@@ -463,8 +500,7 @@ fn main() {
         filter_kmers_callback(&seqs, index_file, &uhs, tgmap, gene_order);
 
         info!("Finished Indexing !");
-    }
-    else{
+    } else {
         // import the index if already present.
         info!("Reading index from File: {:?}", index_file);
         let data_type = utils::get_data_type(index_file);
@@ -479,17 +515,17 @@ fn main() {
                 info!("Read u8 for eqclass data type");
                 let index = utils::Index::<KmerType, u8>::read(index_file);
                 process_reads(&index, reads);
-            },
+            }
             2 => {
                 info!("Read u16 for eqclass data type");
                 let index = utils::Index::<KmerType, u16>::read(index_file);
                 process_reads(&index, reads);
-            },
+            }
             4 => {
                 info!("Read u32 for eqclass data type");
                 let index = utils::Index::<KmerType, u32>::read(index_file);
                 process_reads(&index, reads);
-            },
+            }
             _ => panic!("read unidentified data type with size => {:?}", data_type),
         };
     }

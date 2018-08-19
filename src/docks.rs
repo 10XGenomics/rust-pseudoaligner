@@ -3,14 +3,14 @@
 //! Utilities for reading universal hitting set Kmer libraries. Hitting sets calculated from:
 //! "Designing small universal k-mer hitting sets for improved analysis of high-throughput sequencing", Yaron Orenstein et. al
 
-use debruijn::msp::MspInterval;
-use debruijn::{Vmer, Kmer};
 use debruijn::dna_string::DnaString;
+use debruijn::msp::MspInterval;
+use debruijn::{Kmer, Vmer};
 
 use std::fs::File;
-use std::io::{BufReader, BufRead};
+use std::io::{BufRead, BufReader};
 
-use config::{DocksUhs, DOCKS_FILE, K, L, Minimizer};
+use config::{DocksUhs, Minimizer, DOCKS_FILE, K, L};
 
 // Docks Universal hitting sets
 pub fn read_uhs() -> DocksUhs {
@@ -22,30 +22,30 @@ pub fn read_uhs() -> DocksUhs {
 
     let buffered = BufReader::new(input);
     let mut universal_hitting_set: DocksUhs = DocksUhs::new();
-    
+
     let mut kmer_id: u16 = 0;
     for line in buffered.lines() {
-
-        universal_hitting_set.insert(line.expect("couln't read line in uhs"),
-                                     kmer_id);
+        universal_hitting_set.insert(line.expect("couln't read line in uhs"), kmer_id);
         kmer_id += 1;
     }
 
     info!("Using K = {}, L = {}", K, L);
-    info!("Read total {:?} kmers as Docks-UHS from {}",
-          universal_hitting_set.len(), DOCKS_FILE);
+    info!(
+        "Read total {:?} kmers as Docks-UHS from {}",
+        universal_hitting_set.len(),
+        DOCKS_FILE
+    );
     universal_hitting_set
 }
 
-pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
-                  -> Vec<MspInterval> {
+pub fn generate_msps(seq: &DnaString, uhs: &DocksUhs) -> Vec<MspInterval> {
     // Can't partition strings shorter than k
     assert!(seq.len() >= L);
     assert!(K <= 8);
-    assert!(seq.len() < 1<<32);
+    assert!(seq.len() < 1 << 32);
 
     // lambda to get an index of a kmer in uhs
-    let uhs_idx = | i: usize | {
+    let uhs_idx = |i: usize| {
         let pi = seq.get_kmer::<Minimizer>(i);
         match uhs.get(&pi.to_string()) {
             Some(minimizer) => minimizer,
@@ -69,18 +69,25 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
         let mut pos = start;
         let mut min_pos: Option<usize> = None;
 
-        while pos < stop+1 {
+        while pos < stop + 1 {
             if in_uhs(pos) {
                 match min_pos {
-                    Some(old_pos) => { min_pos = Some(min_uhs_pos(old_pos, pos)); },
-                    None => { min_pos = Some(pos); },
+                    Some(old_pos) => {
+                        min_pos = Some(min_uhs_pos(old_pos, pos));
+                    }
+                    None => {
+                        min_pos = Some(pos);
+                    }
                 };
             }
             pos += 1;
         }
 
-        match min_pos{
-            None => panic!("Can't find a minimizer for {:?}", seq.slice(start, stop-1)),
+        match min_pos {
+            None => panic!(
+                "Can't find a minimizer for {:?}",
+                seq.slice(start, stop - 1)
+            ),
             Some(pos) => pos,
         }
     };
@@ -114,7 +121,7 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
         let interval = MspInterval::new(
             *uhs_idx(min_pos),
             start_pos as u32,
-            (next_pos + L - 1 - start_pos) as u16
+            (next_pos + L - 1 - start_pos) as u16,
         );
         slices.push(interval);
     }
@@ -123,7 +130,7 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
     let last_interval = MspInterval::new(
         *uhs_idx(min_pos),
         last_pos as u32,
-        (seq_len - last_pos) as u16
+        (seq_len - last_pos) as u16,
     );
     slices.push(last_interval);
 
