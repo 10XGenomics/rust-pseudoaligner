@@ -6,18 +6,18 @@ authors = ["avi.srivastava <avi.srivastava@10xgenomics.com>"]
 [dependencies]
 bio = "*"
 clap = "~2.31"
-itertools = ">=0.6"
-pdqsort = "*"
-log = "0.4.1"
+itertools = ">=0.7"
+log = "0.4"
 bincode = "1.0.0"
 flate2 = "1.0.1"
-serde = "1.0.50"
-failure = "0.1.1"
-num = "0.1.42"
-crossbeam = "0.3.2"
-rand = "0.4.2"
-csv = "1.0.0-beta.5"
+serde = "1"
+failure = "0.1.2"
+num = "0.2"
+crossbeam = "0.4"
+rand = "0.5"
+csv = "1.0.0"
 rayon = "1.0.1"
+debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 
 [dependencies.pretty_env_logger]
 git = "https://github.com/k3yavi/pretty-env-logger"
@@ -31,9 +31,6 @@ features = ["serde"]
 git = "https://github.com/10XGenomics/rust-boomphf"
 branch = "master"
 features = ["serde", "fast-constructors"]
-
-[dependencies.debruijn]
-path = "rust-debruijn"
 
 [dependencies.smallvec]
 version = "0.6.1"

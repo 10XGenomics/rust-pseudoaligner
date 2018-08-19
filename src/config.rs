@@ -1,3 +1,5 @@
+// Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
+
 use debruijn::{kmer};
 use std::collections::HashMap;
 

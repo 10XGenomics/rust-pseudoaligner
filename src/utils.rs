@@ -1,7 +1,6 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 //! Utility methods.
-
 use std::fs;
 use std::mem;
 use std::fs::File;

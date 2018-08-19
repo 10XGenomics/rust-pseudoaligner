@@ -1,5 +1,7 @@
-// ! Reading in the universal hitting sets
-// Designing small universal k-mer hitting sets for improved analysis of high-throughput sequencing Yaron Orenstein et. al
+// Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
+
+//! Utilities for reading universal hitting set Kmer libraries. Hitting sets calculated from:
+//! "Designing small universal k-mer hitting sets for improved analysis of high-throughput sequencing", Yaron Orenstein et. al
 
 use debruijn::msp::MspInterval;
 use debruijn::{Vmer, Kmer};

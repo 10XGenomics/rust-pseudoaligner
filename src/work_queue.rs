@@ -1,3 +1,5 @@
+// Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
+
 // Part of code taken from
 // https://gist.github.com/LeoTindall/e6d40782b05dc8ac40faf3a0405debd3
 use std;

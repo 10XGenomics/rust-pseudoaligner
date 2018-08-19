@@ -1,8 +1,9 @@
+// Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
+
 extern crate debruijn;
 extern crate bio;
 extern crate clap;
 extern crate itertools;
-extern crate pdqsort;
 extern crate boomphf;
 extern crate pretty_env_logger;
 extern crate bincode;
@@ -497,12 +498,12 @@ fn main() {
     info!("Finished Processing !")
 }
 
+/*
 #[cfg(test)]
 mod tests{
     use std;
     use utils;
     use bincode;
-    use smallvec::SmallVec;
     use debruijn::{Dir, Kmer, Exts, kmer};
 
     pub type KmerType = kmer::Kmer32;
@@ -533,3 +534,4 @@ mod tests{
         assert_eq!(labels, vec![0, 1]);
     }
 }
+*/
