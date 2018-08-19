@@ -77,7 +77,7 @@ fn read_fasta(reader: fasta::Reader<File>,
             curr_gene_id = gene_id_map[gene_name];
         }
         else{
-            curr_gene_id = gene_id.clone();
+            curr_gene_id = gene_id;
             gene_id_map.insert(gene_name.to_string(), gene_id);
             gene_id += 1;
         }
@@ -105,7 +105,7 @@ fn read_fasta(reader: fasta::Reader<File>,
         transcript_counter += 1;
         if transcript_counter % 100 == 0 {
             print!("\r Done Reading {} sequences", transcript_counter);
-            io::stdout().flush().ok().expect("Could not flush stdout");
+            io::stdout().flush().expect("Could not flush stdout");
         }
         // looking for two transcripts
         // println!("{:?}", record.id());
@@ -124,8 +124,8 @@ fn read_fasta(reader: fasta::Reader<File>,
     (seqs, tgmap_vec, gene_id_vec)
 }
 
-fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
-                         uhs: DocksUhs, tgmap: Vec<usize>,
+fn filter_kmers_callback(seqs: &[Vec<DnaString>], index_file: &str,
+                         uhs: &DocksUhs, tgmap: Vec<usize>,
                          gene_order: Vec<String>) {
     let seqs_len = seqs.len();
 
@@ -133,14 +133,14 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
     match seqs_len {
         1 ...U8_MAX  => {
             info!("Using 8 bit variable for storing the data.");
-            call_filter_kmers(&seqs, index_file,
-                              &uhs, u8::min_value(),
+            call_filter_kmers(seqs, index_file,
+                              uhs, u8::min_value(),
                               tgmap, gene_order);
         },
         U8_MAX ... U16_MAX => {
             info!("Using 16 bit variable for storing the data.");
-            call_filter_kmers(&seqs, index_file,
-                              &uhs, u16::min_value(),
+            call_filter_kmers(seqs, index_file,
+                              uhs, u16::min_value(),
                               tgmap, gene_order);
         },
         U16_MAX ... U32_MAX => {
@@ -155,7 +155,7 @@ fn filter_kmers_callback(seqs: Vec<Vec<DnaString>>, index_file: &str,
     };
 }
 
-fn call_filter_kmers<S>(seqs: &Vec<Vec<DnaString>>, index_file: &str,
+fn call_filter_kmers<S>(seqs: &[Vec<DnaString>], index_file: &str,
                         uhs: &DocksUhs, _seq_id: S, tgmap: Vec<usize>,
                         gene_order: Vec<String>)
 where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
@@ -185,7 +185,7 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
                             if done % 10 == 0 {
                                 print!("\rDone Bucketing {}% of the reference sequences",
                                        std::cmp::min(100, done*100/num_seqs));
-                                io::stdout().flush().ok().expect("Could not flush stdout");
+                                io::stdout().flush().expect("Could not flush stdout");
                             }
                           },
                         None => { break; },
@@ -257,14 +257,14 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
                         // If work is available, do that work.
                         match queue.get_rev_work(&bucket_ref) {
                             Some((bucket_data, _)) => {
-                                let thread_data = work_queue::analyze(bucket_data, &summarizer_ref);
+                                let thread_data = work_queue::analyze(&bucket_data, &summarizer_ref);
                                 tx.send(thread_data).expect("Could not send data!");
 
                                 let done = queue.len();
                                 if done % 10 == 0 {
                                     print!("\rDone Analyzing {}% of the buckets",
                                            done*100/num_buckets);
-                                    io::stdout().flush().ok().expect("Could not flush stdout");
+                                    io::stdout().flush().expect("Could not flush stdout");
                                 }
                             },
                             None => { break; },
@@ -292,12 +292,10 @@ where S: Clone + Hash + Eq + Debug + Ord + Serialize + One + Add<Output=S>
     info!("Merger of graph Complete");
 
     let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
-    utils::Index::dump(full_dbg, gene_order,
-                       eq_classes,
-                       index_file);
+    utils::Index::dump(&full_dbg, gene_order, &eq_classes, index_file);
 }
 
-fn process_reads<S>(index: utils::Index<KmerType, S>,
+fn process_reads<S>(index: &utils::Index<KmerType, S>,
                     reader: fastq::Reader<File>)
 where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + DeserializeOwned {
     info!("Done Reading index");
@@ -388,11 +386,11 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash + Serialize + Dese
                     }
 
                     read_counter += 1;
-                    if read_counter % 1000000 == 0 {
+                    if read_counter % 1_000_000 == 0 {
                         let frac_mapped = mapped_read_counter as f32 * 100.0 / read_counter as f32;
                         eprint!("\rDone Mapping {} reads w/ Rate: {}",
                                 read_counter, frac_mapped);
-                        io::stderr().flush().ok().expect("Could not flush stdout");
+                        io::stderr().flush().expect("Could not flush stdout");
                     }
                 } // end-Some
             } // end-match
@@ -462,7 +460,7 @@ fn main() {
         let (seqs, tgmap, gene_order) = read_fasta(reader, tgmap_file);
 
         //Set up the filter_kmer call based on the number of sequences.
-        filter_kmers_callback(seqs, index_file, uhs, tgmap, gene_order);
+        filter_kmers_callback(&seqs, index_file, &uhs, tgmap, gene_order);
 
         info!("Finished Indexing !");
     }
@@ -480,17 +478,17 @@ fn main() {
             1 => {
                 info!("Read u8 for eqclass data type");
                 let index = utils::Index::<KmerType, u8>::read(index_file);
-                process_reads(index, reads);
+                process_reads(&index, reads);
             },
             2 => {
                 info!("Read u16 for eqclass data type");
                 let index = utils::Index::<KmerType, u16>::read(index_file);
-                process_reads(index, reads);
+                process_reads(&index, reads);
             },
             4 => {
                 info!("Read u32 for eqclass data type");
                 let index = utils::Index::<KmerType, u32>::read(index_file);
-                process_reads(index, reads);
+                process_reads(&index, reads);
             },
             _ => panic!("read unidentified data type with size => {:?}", data_type),
         };

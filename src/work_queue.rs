@@ -31,7 +31,7 @@ impl WorkQueue{
         }
     }
 
-    pub fn get_work<'a, T>(&self, seqs: &'a Vec<T>)
+    pub fn get_work<'a, T>(&self, seqs: &'a [T])
                            -> Option<(&'a T, usize)> {
         let old_head = self.head.fetch_add(1, Ordering::SeqCst);
         match seqs.get(old_head) {
@@ -55,7 +55,7 @@ impl WorkQueue{
     }
 }
 
-pub fn run<'a>(contigs: &'a Vec<DnaString>, uhs: &DocksUhs)
+pub fn run<'a>(contigs: &'a [DnaString], uhs: &DocksUhs)
                -> (std::vec::Vec<(u16, DnaStringSlice<'a>, Exts)>, usize){
     // One FASTA entry possibly broken into multiple contigs
     // based on the location of `N` int he sequence.
@@ -65,7 +65,7 @@ pub fn run<'a>(contigs: &'a Vec<DnaString>, uhs: &DocksUhs)
     for seq in contigs {
         let seq_len = seq.len();
         if seq_len >= L {
-            let msps = generate_msps( &seq, uhs );
+            let msps = generate_msps(&seq, uhs );
             for msp in msps{
                 let bucket_id = msp.bucket();
                 if bucket_id >= uhs.len() as u16{
@@ -85,7 +85,7 @@ pub fn run<'a>(contigs: &'a Vec<DnaString>, uhs: &DocksUhs)
     (bucket_slices, missed_bases_counter)
 }
 
-pub fn analyze<S>( bucket_data: Vec<(DnaStringSlice, Exts, S)>,
+pub fn analyze<S>( bucket_data: &[(DnaStringSlice, Exts, S)],
                    summarizer: &Arc<CountFilterEqClass<S>>)
                    -> Option<BaseGraph<KmerType, EqClassIdType>>
 where S: Clone + Eq + Hash + Ord + Debug + Send + Sync {
@@ -171,7 +171,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
             *kmer_pos += 1;
         }
 
-        return None;
+        None
     };
 
     // get the first match through mphf
@@ -184,7 +184,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
     };
 
     // check if we can extend back if there were SNP in every kmer query
-    if kmer_pos >= left_extend_threshold && ! node_id.is_none() {
+    if kmer_pos >= left_extend_threshold && node_id.is_some() {
         let mut last_pos = kmer_pos - 1;
         let mut prev_node_id = node_id.unwrap();
         let mut prev_kmer_offset = kmer_offset.unwrap() - 1;
@@ -369,7 +369,7 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
                    colors_len, read_coverage);
         }
 
-        return None
+        None
     }
     else{
         let color: u32 = colors.pop().unwrap();
@@ -393,6 +393,6 @@ where S: Clone + Ord + PartialEq + Debug + Sync + Send + Hash {
         }
 
         let eq_classes_vec: Vec<S> = eq_class_set.into_iter().collect();
-        return Some((eq_classes_vec, read_coverage))
+        Some((eq_classes_vec, read_coverage))
     }
 }

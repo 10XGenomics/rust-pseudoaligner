@@ -42,9 +42,9 @@ where K:Hash + Serialize, D: Eq + Hash + Serialize {
 impl<K, D> Index<K, D>
 where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
       D: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned{
-    pub fn dump(dbg: DebruijnGraph<K, EqClassIdType>,
+    pub fn dump(dbg: &DebruijnGraph<K, EqClassIdType>,
                 gene_order: Vec<String>,
-                eqclasses: Vec<Vec<D>>,
+                eqclasses: &[Vec<D>],
                 index_path: &str) {
 
         info!("Dumping index into folder: {:?}", index_path);
@@ -63,8 +63,8 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
 
         let genes_file_name = index_path.to_owned() + "/genes.txt";
         let mut file_handle = File::create(genes_file_name).expect("Unable to create file");
-        for i in gene_order{
-            write!(file_handle, "{}\n", i).expect("can't write gene names");
+        for i in gene_order {
+            writeln!(file_handle, "{}", i).expect("can't write gene names");
         }
 
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
@@ -77,7 +77,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         }
 
         info!("Total {:?} kmers to process in dbg", total_kmers);
-        let mphf = boomphf::Mphf::new_parallel_with_keys(1.7, &dbg, None,
+        let mphf = boomphf::Mphf::new_parallel_with_keys(1.7, dbg, None,
                                                          total_kmers,
                                                          MAX_WORKER);
 
@@ -115,7 +115,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
                             for kmer in node {
                                 let index = match mphf_ref.try_hash(&kmer) {
                                     None => panic!("can't find in hash"),
-                                    Some(index) => index.clone(),
+                                    Some(index) => index,
                                 };
                                 indices.push(index);
                             }
@@ -200,7 +200,7 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         }
 
         let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
-        let eq_classes: Vec<Vec<D>> = read_obj(eqclass_file_name)
+        let eqclasses: Vec<Vec<D>> = read_obj(eqclass_file_name)
             .expect("Can't read classes");
 
         let dbg_file_name = index_path.to_owned() + "/dbg.bin";
@@ -218,9 +218,9 @@ where K:Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
         let phf = NoKeyBoomHashMap2::new_with_mphf( phf, positions,
                                                              offsets );
         Index{
-            eqclasses: eq_classes,
-            dbg: dbg,
-            phf: phf,
+            eqclasses,
+            dbg,
+            phf,
         }
     }
 

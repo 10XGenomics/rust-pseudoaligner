@@ -20,7 +20,7 @@ pub const MAX_WORKER: usize = 6;
 
 //DOCKS configs
 pub type DocksUhs = HashMap<String, u16>;
-pub const DOCKS_FILE: &'static str = "res_6_30_4_0.txt";
+pub const DOCKS_FILE: &str = "res_6_30_4_0.txt";
 
 //pub const K: usize = Minimizer::k();
 //pub const L: usize = KmerType::k();

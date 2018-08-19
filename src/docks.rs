@@ -22,10 +22,12 @@ pub fn read_uhs() -> DocksUhs {
 
     let buffered = BufReader::new(input);
     let mut universal_hitting_set: DocksUhs = DocksUhs::new();
+    
     let mut kmer_id: u16 = 0;
     for line in buffered.lines() {
+
         universal_hitting_set.insert(line.expect("couln't read line in uhs"),
-                                     kmer_id.clone());
+                                     kmer_id);
         kmer_id += 1;
     }
 
@@ -74,7 +76,7 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
                     None => { min_pos = Some(pos); },
                 };
             }
-            pos = pos + 1;
+            pos += 1;
         }
 
         match min_pos{
@@ -92,14 +94,12 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
         if i > min_pos {
             min_pos = find_min_pos_in_range(i, i + L - K);
             min_positions.push((i, min_pos));
-        } else {
-            if in_uhs(i + L - K) {
-                let test_min = min_uhs_pos(min_pos, i + L - K);
+        } else if in_uhs(i + L - K) {
+            let test_min = min_uhs_pos(min_pos, i + L - K);
 
-                if test_min != min_pos {
-                    min_pos = test_min;
-                    min_positions.push((i, min_pos));
-                }
+            if test_min != min_pos {
+                min_pos = test_min;
+                min_positions.push((i, min_pos));
             }
         }
     }
@@ -112,7 +112,7 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
         let (next_pos, _) = min_positions[p + 1];
 
         let interval = MspInterval::new(
-            uhs_idx(min_pos).clone() as u16,
+            *uhs_idx(min_pos),
             start_pos as u32,
             (next_pos + L - 1 - start_pos) as u16
         );
@@ -121,7 +121,7 @@ pub fn generate_msps( seq: &DnaString, uhs: &DocksUhs)
 
     let (last_pos, min_pos) = min_positions[min_positions.len() - 1];
     let last_interval = MspInterval::new(
-        uhs_idx(min_pos).clone() as u16,
+        *uhs_idx(min_pos),
         last_pos as u32,
         (seq_len - last_pos) as u16
     );
