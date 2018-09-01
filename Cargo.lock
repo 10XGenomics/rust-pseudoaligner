@@ -127,7 +127,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "boomphf"
 version = "0.2.1"
-source = "git+https://github.com/10XGenomics/rust-boomphf#3ad8db1d34d8b7eb7c930e0883bf8c707beeeab5"
+source = "git+https://github.com/10XGenomics/rust-boomphf#6de6ce4ce7cc32f1b093f5c37ef1316cd5991440"
 dependencies = [
  "crossbeam 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -311,7 +311,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "debruijn"
 version = "0.2.0"
-source = "git+https://github.com/10XGenomics/rust-debruijn#2ce7a266d7a889a74cd53f58447248db1aa36e05"
+source = "git+https://github.com/10XGenomics/rust-debruijn#68f3ff6c8f48f5e0f67cb1359102089abd276157"
 dependencies = [
  "bit-set 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "boomphf 0.2.1 (git+https://github.com/10XGenomics/rust-boomphf)",
@@ -718,6 +718,7 @@ dependencies = [
  "failure 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "flate2 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.7.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pretty_env_logger 0.2.3 (git+https://github.com/k3yavi/pretty-env-logger)",

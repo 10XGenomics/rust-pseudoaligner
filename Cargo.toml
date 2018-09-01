@@ -16,7 +16,8 @@ num = "0.2"
 crossbeam = "0.4"
 rand = "0.5"
 csv = "1.0.0"
-rayon = "1.0.1"
+rayon = "1.0"
+lazy_static = "*"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 
 [dependencies.pretty_env_logger]
