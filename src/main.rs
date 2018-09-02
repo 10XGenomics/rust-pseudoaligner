@@ -140,7 +140,7 @@ where
 
                             let wrapped_read_data = match read_data {
                                 Some((eq_class, coverage)) => {
-                                    if coverage >= READ_COVERAGE_THRESHOLD && eq_class.len() > 0 {
+                                    if coverage >= READ_COVERAGE_THRESHOLD && eq_class.is_empty() {
                                         Some((true, record.id().to_owned(), eq_class, coverage))
                                     } else {
                                         Some((false, record.id().to_owned(), eq_class, coverage))

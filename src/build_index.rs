@@ -156,7 +156,7 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
     let mut node_and_offsets = Vec::with_capacity(total_kmers);
     node_and_offsets.resize(total_kmers, (U32_MAX as u32, U32_MAX as u32));
 
-    for node in dbg.into_iter() {
+    for node in dbg {
         let node_id = node.node_id;
 
         for (offset, kmer) in node.into_iter().enumerate() {

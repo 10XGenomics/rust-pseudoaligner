@@ -277,11 +277,11 @@ where
 /// Compute the intersection of v1 and v2 inplace on top of v1
 /// v1 and v2 must be sorted
 fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
-    if v1.len() == 0 {
+    if v1.is_empty() {
         return;
     }
 
-    if v2.len() == 0 {
+    if v2.is_empty() {
         v1.clear();
     }
 
