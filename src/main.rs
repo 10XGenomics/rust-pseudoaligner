@@ -70,7 +70,7 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
 
 fn read_fasta(
     reader: fasta::Reader<File>,
-) -> (Vec<DnaString>, Vec<String>, HashMap<String, String>) {
+) -> Result<(Vec<DnaString>, Vec<String>, HashMap<String, String>), Error> {
     let mut seqs = Vec::new();
     let mut transcript_counter = 0;
     let mut tx_ids = Vec::new();
@@ -79,7 +79,7 @@ fn read_fasta(
     info!("Starting Reading the Fasta file\n");
     for result in reader.records() {
         // obtain record or fail with error
-        let record = result.unwrap();
+        let record = result?;
 
         // Sequence
         let dna_string = DnaString::from_acgt_bytes_hashn(record.seq(), record.id().as_bytes());
@@ -105,7 +105,7 @@ fn read_fasta(
         transcript_counter
     );
 
-    (seqs, tx_ids, tx_to_gene_map)
+    Ok((seqs, tx_ids, tx_to_gene_map))
 }
 
 fn process_reads<K>(index: &Pseudoaligner<K>, reader: fastq::Reader<File>)
@@ -217,7 +217,7 @@ where
     lock.next()
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let matches = App::new("De-bruijn-mapping")
         .version("1.0")
         .author("Avi S. <avi.srivastava@10xgenomics.com>")
@@ -267,26 +267,28 @@ fn main() {
 
         // if index not found then create a new one
         let reader = fasta::Reader::from_file(fasta_file).unwrap();
-        let (seqs, tgmap, gene_order) = read_fasta(reader);
+        let (seqs, _tx_ids, _tx_gene_map) = read_fasta(reader)?;
 
         //Set up the filter_kmer call based on the number of sequences.
         let index = build_index::build_pseudoaligner_index::<config::KmerType>(&seqs);
-        utils::write_obj(&index, index_file);
+        utils::write_obj(&index, index_file)?;
 
         info!("Finished Indexing !");
     } else {
         // import the index if already present.
         info!("Reading index from File: {:?}", index_file);
-        let index = utils::read_obj(index_file).unwrap();
+        let index = utils::read_obj(index_file)?;
 
         // obtain reader or fail with error (via the unwrap method)
         let reads_file = matches.value_of("reads").unwrap();
         info!("Path for Reads FASTQ: {}\n\n", reads_file);
-        let reads = fastq::Reader::from_file(reads_file).unwrap();
+        let reads = fastq::Reader::from_file(reads_file)?;
 
         process_reads::<config::KmerType>(&index, reads);
     }
-    info!("Finished Processing !")
+
+    info!("Finished Processing !");
+    Ok(())
 }
 
 /*
