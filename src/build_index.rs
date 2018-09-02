@@ -12,16 +12,15 @@ use debruijn::graph::*;
 use debruijn::*;
 
 use boomphf;
-use config::{MAX_WORKER, U32_MAX, MIN_KMERS};
+use config::{MAX_WORKER, MIN_KMERS, U32_MAX};
 use pseudoaligner::Pseudoaligner;
-use rayon::prelude::*;
 use rayon;
+use rayon::prelude::*;
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
 
-pub fn build_pseudoaligner_index<K>(
-    seqs: &[DnaString],
-) -> Pseudoaligner<K> where
+pub fn build_pseudoaligner_index<K>(seqs: &[DnaString]) -> Pseudoaligner<K>
+where
     K: Kmer + Sync + Send,
 {
     // Thread pool Configuration for calling BOOMphf
@@ -30,26 +29,23 @@ pub fn build_pseudoaligner_index<K>(
         .build_global()
         .unwrap();
 
-
     if seqs.len() >= U32_MAX {
         panic!("Too many ({}) sequneces to handle.", seqs.len());
     }
 
     println!("Sharding sequences...");
 
-    let mut buckets : Vec<_> = 
-        seqs
+    let mut buckets: Vec<_> = seqs
         .into_par_iter()
         .enumerate()
         .flat_map(|(id, seq)| partition_contigs::<KmerType>(seq, id as u32))
         .collect();
-    
+
     buckets.par_sort_unstable_by_key(|x| x.0);
     println!("Got {} sequence chunks", buckets.len());
 
     let summarizer = Arc::new(debruijn::filter::CountFilterEqClass::new(MIN_KMERS));
     let sequence_shards = group_by_slices(&buckets, |x| x.0, MIN_SHARD_SEQUENCES);
-    
 
     let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
 
@@ -57,8 +53,9 @@ pub fn build_pseudoaligner_index<K>(
 
     sequence_shards
         .into_par_iter()
-        .map_with(summarizer.clone(), |s, strings| assemble_shard::<K>(strings, s))
-        .collect_into_vec(&mut shard_dbgs);
+        .map_with(summarizer.clone(), |s, strings| {
+            assemble_shard::<K>(strings, s)
+        }).collect_into_vec(&mut shard_dbgs);
 
     println!();
     println!("Done seprate de-bruijn graph construction");
@@ -75,22 +72,26 @@ pub fn build_pseudoaligner_index<K>(
     Pseudoaligner::new(dbg, eq_classes, dbg_index)
 }
 
-
 type PmerType = debruijn::kmer::Kmer6;
 
 lazy_static! {
     static ref PERM: Vec<usize> = {
         let maxp = 1 << (2 * PmerType::k());
         let mut permutation = Vec::with_capacity(maxp);
-        for i in 0 .. maxp {
+        for i in 0..maxp {
             permutation.push(i);
         }
         permutation
     };
 }
 
-fn partition_contigs<'a, K>(contig: &'a DnaString, contig_id: u32) -> Vec<(u16, u32, DnaStringSlice<'a>, Exts)>
-where K: Kmer {
+fn partition_contigs<'a, K>(
+    contig: &'a DnaString,
+    contig_id: u32,
+) -> Vec<(u16, u32, DnaStringSlice<'a>, Exts)>
+where
+    K: Kmer,
+{
     // One FASTA entry possibly broken into multiple contigs
     // based on the location of `N` int he sequence.
 
@@ -105,18 +106,15 @@ where K: Kmer {
             bucket_slices.push((bucket_id, contig_id, slice, exts));
         }
     }
-    
+
     bucket_slices
 }
 
 fn assemble_shard<K: Kmer>(
     shard_data: &[(u16, u32, DnaStringSlice, Exts)],
     summarizer: &Arc<CountFilterEqClass<u32>>,
-) -> BaseGraph<K, EqClassIdType>
-{
-
-    let filter_input: Vec<_> = 
-        shard_data
+) -> BaseGraph<K, EqClassIdType> {
+    let filter_input: Vec<_> = shard_data
         .into_iter()
         .cloned()
         .map(|(_, seqid, string, exts)| (string, exts, seqid))
@@ -129,22 +127,21 @@ fn assemble_shard<K: Kmer>(
         REPORT_ALL_KMER,
         MEM_SIZE,
     );
-    
+
     compress_kmers_with_hash(STRANDED, ScmapCompress::new(), &phf)
 }
 
 fn merge_shard_dbgs<K: Kmer + Sync + Send>(
     uncompressed_dbgs: Vec<BaseGraph<K, EqClassIdType>>,
 ) -> DebruijnGraph<K, EqClassIdType> {
-
     let combined_graph = BaseGraph::combine(uncompressed_dbgs.into_iter()).finish();
     compress_graph(STRANDED, ScmapCompress::new(), combined_graph, None)
 }
 
 #[inline(never)]
-fn make_dbg_index<K:Kmer + Sync + Send>(dbg: &DebruijnGraph<K, EqClassIdType>) -> 
-    NoKeyBoomHashMap<K, (u32,u32)>
-{
+fn make_dbg_index<K: Kmer + Sync + Send>(
+    dbg: &DebruijnGraph<K, EqClassIdType>,
+) -> NoKeyBoomHashMap<K, (u32, u32)> {
     let mut total_kmers = 0;
     let kmer_length = K::k();
     for node in dbg.iter_nodes() {
@@ -175,7 +172,11 @@ fn make_dbg_index<K:Kmer + Sync + Send>(dbg: &DebruijnGraph<K, EqClassIdType>) -
     boomphf::hashmap::NoKeyBoomHashMap::new_with_mphf(mphf, node_and_offsets)
 }
 
-fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(data: &[T], f: F, min_size: usize) -> Vec<&[T]> {
+fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
+    data: &[T],
+    f: F,
+    min_size: usize,
+) -> Vec<&[T]> {
     let mut slice_start = 0;
     let mut result = Vec::new();
     for i in 1..data.len() {

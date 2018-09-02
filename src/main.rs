@@ -23,10 +23,10 @@ extern crate log;
 #[macro_use]
 extern crate serde;
 
-mod config;
-mod utils;
 mod build_index;
+mod config;
 mod pseudoaligner;
+mod utils;
 
 // Import some modules
 use std::collections::HashMap;
@@ -41,18 +41,18 @@ use std::sync::{Arc, Mutex};
 use bio::io::{fasta, fastq};
 use clap::{App, Arg};
 
-use debruijn::Kmer;
 use debruijn::dna_string::*;
+use debruijn::Kmer;
 
 use pseudoaligner::Pseudoaligner;
 
+use config::MAX_WORKER;
 use config::READ_COVERAGE_THRESHOLD;
-use config::{MAX_WORKER};
 
 use failure::Error;
 use flate2::read::MultiGzDecoder;
-use std::path::Path;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 
 /// Open a (possibly gzipped) file into a BufReader.
 fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
@@ -68,9 +68,9 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
     }
 }
 
-
-fn read_fasta(reader: fasta::Reader<File>) -> (Vec<DnaString>, Vec<String>, HashMap<String, String>) {
-
+fn read_fasta(
+    reader: fasta::Reader<File>,
+) -> (Vec<DnaString>, Vec<String>, HashMap<String, String>) {
     let mut seqs = Vec::new();
     let mut transcript_counter = 0;
     let mut tx_ids = Vec::new();
@@ -108,10 +108,9 @@ fn read_fasta(reader: fasta::Reader<File>) -> (Vec<DnaString>, Vec<String>, Hash
     (seqs, tx_ids, tx_to_gene_map)
 }
 
-
 fn process_reads<K>(index: &Pseudoaligner<K>, reader: fastq::Reader<File>)
 where
-    K: Kmer + Sync + Send
+    K: Kmer + Sync + Send,
 {
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
@@ -218,8 +217,6 @@ where
     lock.next()
 }
 
-
-
 fn main() {
     let matches = App::new("De-bruijn-mapping")
         .version("1.0")
@@ -286,7 +283,7 @@ fn main() {
         let reads_file = matches.value_of("reads").unwrap();
         info!("Path for Reads FASTQ: {}\n\n", reads_file);
         let reads = fastq::Reader::from_file(reads_file).unwrap();
-        
+
         process_reads::<config::KmerType>(&index, reads);
     }
     info!("Finished Processing !")
@@ -331,4 +328,3 @@ mod tests{
     }
 }
 */
-

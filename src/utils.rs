@@ -5,9 +5,9 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
-use std::path::Path;
 use bincode;
 use bincode::{deserialize_from, serialize_into};
+use std::path::Path;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;

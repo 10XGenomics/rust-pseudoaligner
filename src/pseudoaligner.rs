@@ -3,33 +3,36 @@
 use std;
 use std::cmp::Ordering;
 
-use boomphf::hashmap::{NoKeyBoomHashMap};
-use debruijn::{Dir, Mer, Kmer, Vmer};
-use debruijn::dna_string::{DnaString};
-use debruijn::graph::DebruijnGraph;
+use boomphf::hashmap::NoKeyBoomHashMap;
+use debruijn::dna_string::DnaString;
 use debruijn::filter::EqClassIdType;
-
+use debruijn::graph::DebruijnGraph;
+use debruijn::{Dir, Kmer, Mer, Vmer};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Pseudoaligner<K: Kmer>  
-{
+pub struct Pseudoaligner<K: Kmer> {
     dbg: DebruijnGraph<K, EqClassIdType>,
     eq_classes: Vec<Vec<u32>>,
     dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
 }
 
 impl<K> Pseudoaligner<K>
-    where K: Kmer + Sync + Send
+where
+    K: Kmer + Sync + Send,
 {
-    pub fn new(dbg: DebruijnGraph<K, EqClassIdType>, 
-            eq_classes: Vec<Vec<u32>>,
-            dbg_index: NoKeyBoomHashMap<K, (u32, u32)>) -> Pseudoaligner<K>
-    {
-        Pseudoaligner { dbg, eq_classes, dbg_index }
+    pub fn new(
+        dbg: DebruijnGraph<K, EqClassIdType>,
+        eq_classes: Vec<Vec<u32>>,
+        dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
+    ) -> Pseudoaligner<K> {
+        Pseudoaligner {
+            dbg,
+            eq_classes,
+            dbg_index,
+        }
     }
     /// Pseudo-align `read_seq` to determine its the equivalence class.
-    pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)>
-    {
+    pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
         let mut colors: Vec<u32> = Vec::new();
@@ -63,7 +66,7 @@ impl<K> Pseudoaligner<K>
         };
 
         // extract the first exact matching position of read
-        let (mut node_id, mut kmer_offset) = 
+        let (mut node_id, mut kmer_offset) =
             // get the first match through mphf
             match find_kmer_match(&mut kmer_pos) {
                 None => (None, None),
@@ -258,7 +261,6 @@ impl<K> Pseudoaligner<K>
 
             None
         } else {
-
             // Intersect the equivalence classes
             let first_color = colors.pop().unwrap();
             let mut eq_class = self.eq_classes[first_color as usize].clone();
@@ -291,7 +293,7 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
         match v1[idx1].cmp(&v2[idx2]) {
             Ordering::Less => idx1 += 1,
             Ordering::Greater => idx2 += 1,
-            Ordering::Equal => { 
+            Ordering::Equal => {
                 v1.swap(fill_idx1, idx1);
                 idx1 += 1;
                 idx2 += 1;
@@ -300,4 +302,3 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
         }
     }
 }
-
