@@ -1,8 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
-use std;
-use std::sync::{Arc, Mutex};
 
-use bio::io::fastq;
+use std::sync::Arc;
+
 use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap};
 use config::{KmerType, MEM_SIZE, REPORT_ALL_KMER, STRANDED};
 use debruijn;
@@ -18,6 +17,7 @@ use pseudoaligner::Pseudoaligner;
 use rayon::prelude::*;
 use rayon;
 
+const MIN_SHARD_SEQUENCES: usize = 2000;
 
 pub fn build_pseudoaligner_index<K>(
     seqs: &[DnaString],
@@ -45,14 +45,15 @@ pub fn build_pseudoaligner_index<K>(
         .collect();
     
     buckets.par_sort_unstable_by_key(|x| x.0);
-
+    println!("Got {} sequence chunks", buckets.len());
 
     let summarizer = Arc::new(debruijn::filter::CountFilterEqClass::new(MIN_KMERS));
-    let sequence_shards = group_by_slices(&buckets, |x| x.0, 1000);
+    let sequence_shards = group_by_slices(&buckets, |x| x.0, MIN_SHARD_SEQUENCES);
     
+
     let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
 
-    println!("Assembling shards...");
+    println!("Assembling {} shards...", sequence_shards.len());
 
     sequence_shards
         .into_par_iter()
@@ -140,7 +141,8 @@ fn merge_shard_dbgs<K: Kmer + Sync + Send>(
     compress_graph(STRANDED, ScmapCompress::new(), combined_graph, None)
 }
 
-pub fn make_dbg_index<K:Kmer + Sync + Send>(dbg: &DebruijnGraph<K, EqClassIdType>) -> 
+#[inline(never)]
+fn make_dbg_index<K:Kmer + Sync + Send>(dbg: &DebruijnGraph<K, EqClassIdType>) -> 
     NoKeyBoomHashMap<K, (u32,u32)>
 {
     let mut total_kmers = 0;
@@ -153,6 +155,7 @@ pub fn make_dbg_index<K:Kmer + Sync + Send>(dbg: &DebruijnGraph<K, EqClassIdType
     println!("Making mphf of kmers");
     let mphf = boomphf::Mphf::new_parallel_with_keys(1.7, dbg, None, total_kmers, MAX_WORKER);
 
+    println!("Assigning offsets to kmers");
     let mut node_and_offsets = Vec::with_capacity(total_kmers);
     node_and_offsets.resize(total_kmers, (U32_MAX as u32, U32_MAX as u32));
 
@@ -185,15 +188,4 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(data: &[T], f: F, min_size: 
         result.push(&data[slice_start..]);
     }
     result
-}
-
-
-pub fn get_next_record<R>(
-    reader: &Arc<Mutex<fastq::Records<R>>>,
-) -> Option<Result<fastq::Record, std::io::Error>>
-where
-    R: std::io::Read,
-{
-    let mut lock = reader.lock().unwrap();
-    lock.next()
 }

@@ -127,7 +127,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "boomphf"
 version = "0.2.1"
-source = "git+https://github.com/10XGenomics/rust-boomphf#6de6ce4ce7cc32f1b093f5c37ef1316cd5991440"
+source = "git+https://github.com/10XGenomics/rust-boomphf#9346033879e408c1ac9438978c08cbb96dcf32c1"
 dependencies = [
  "crossbeam 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",

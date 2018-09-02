@@ -25,7 +25,7 @@ extern crate serde;
 
 mod config;
 mod utils;
-mod work_queue;
+mod build_index;
 mod pseudoaligner;
 
 // Import some modules
@@ -52,7 +52,7 @@ use config::{MAX_WORKER};
 use failure::Error;
 use flate2::read::MultiGzDecoder;
 use std::path::Path;
-use std::io::{BufRead, BufReader, BufWriter};
+use std::io::{BufRead, BufReader};
 
 /// Open a (possibly gzipped) file into a BufReader.
 fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
@@ -128,7 +128,7 @@ where
             scope.spawn(move || {
                 loop {
                     // If work is available, do that work.
-                    match work_queue::get_next_record(&reader) {
+                    match get_next_record(&reader) {
                         Some(result_record) => {
                             let record = match result_record {
                                 Ok(record) => record,
@@ -208,6 +208,15 @@ where
     info!("Done Mapping Reads");
 }
 
+pub fn get_next_record<R>(
+    reader: &Arc<Mutex<fastq::Records<R>>>,
+) -> Option<Result<fastq::Record, std::io::Error>>
+where
+    R: std::io::Read,
+{
+    let mut lock = reader.lock().unwrap();
+    lock.next()
+}
 
 
 
@@ -264,7 +273,7 @@ fn main() {
         let (seqs, tgmap, gene_order) = read_fasta(reader);
 
         //Set up the filter_kmer call based on the number of sequences.
-        let index = work_queue::build_pseudoaligner_index::<config::KmerType>(&seqs);
+        let index = build_index::build_pseudoaligner_index::<config::KmerType>(&seqs);
         utils::write_obj(&index, index_file);
 
         info!("Finished Indexing !");
@@ -293,9 +302,11 @@ mod tests{
 
     pub type KmerType = kmer::Kmer32;
 
+    const 
+
     #[test]
     fn test_kmer_search() {
-        let index_file = "/mnt/home/avi.srivastava/rust_avi/rust-utils-10x/sc_mapping/unit_test/test.small.index";
+        let tx_file = "/mnt/home/avi.srivastava/rust_avi/rust-utils-10x/sc_mapping/unit_test/test.small.index";
         println!("Reading index from File: {:?}", index_file);
         let input_dump: Result<utils::Index<KmerType, Exts, u8>,
                                Box<bincode::ErrorKind>> =
