@@ -1,0 +1,5 @@
+Download test data from:
+ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz
+
+Small test set created by:
+head -n 50000 gencode.v28.transcripts.fa > gencode_small.fa
