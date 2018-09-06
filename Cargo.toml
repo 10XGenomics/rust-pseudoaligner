@@ -1,5 +1,5 @@
 [package]
-name = "pseudoaligner"
+name = "debruijn_mapping"
 version = "0.1.0"
 authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
 

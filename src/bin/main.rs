@@ -6,6 +6,7 @@ extern crate boomphf;
 extern crate crossbeam;
 extern crate csv;
 extern crate debruijn;
+extern crate debruijn_mapping;
 extern crate docopt;
 extern crate failure;
 extern crate flate2;
@@ -15,18 +16,10 @@ extern crate pretty_env_logger;
 extern crate rayon;
 
 #[macro_use]
-extern crate lazy_static;
-
-#[macro_use]
 extern crate log;
 
 #[macro_use]
 extern crate serde;
-
-mod build_index;
-mod config;
-mod pseudoaligner;
-mod utils;
 
 // Import some modules
 use std::collections::HashMap;
@@ -43,11 +36,6 @@ use bio::io::{fasta, fastq};
 use debruijn::dna_string::*;
 use debruijn::Kmer;
 
-use pseudoaligner::Pseudoaligner;
-
-use config::MAX_WORKER;
-use config::READ_COVERAGE_THRESHOLD;
-
 use failure::Error;
 use flate2::read::MultiGzDecoder;
 use std::io::{BufRead, BufReader};
@@ -55,9 +43,12 @@ use std::path::Path;
 
 use docopt::Docopt;
 
+use debruijn_mapping::{build_index, config, utils};
+use debruijn_mapping::config::{MAX_WORKER, READ_COVERAGE_THRESHOLD};
+use debruijn_mapping::pseudoaligner::Pseudoaligner;
+
 const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
 const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
-
 const USAGE: &'static str = "
 De-bruijn-mapping
 
