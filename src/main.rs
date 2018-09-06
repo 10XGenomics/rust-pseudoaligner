@@ -3,10 +3,10 @@
 extern crate bincode;
 extern crate bio;
 extern crate boomphf;
-extern crate clap;
 extern crate crossbeam;
 extern crate csv;
 extern crate debruijn;
+extern crate docopt;
 extern crate failure;
 extern crate flate2;
 extern crate itertools;
@@ -39,7 +39,6 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use bio::io::{fasta, fastq};
-use clap::{App, Arg};
 
 use debruijn::dna_string::*;
 use debruijn::Kmer;
@@ -53,6 +52,36 @@ use failure::Error;
 use flate2::read::MultiGzDecoder;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+
+use docopt::Docopt;
+
+const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
+const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+const USAGE: &'static str = "
+De-bruijn-mapping
+
+Usage:
+  pseudoaligner index <output> <ref-fasta>
+  pseudoaligner map <index> <reads-fastq>
+  pseudoaligner -h | --help
+  pseudoaligner --version 
+
+Options:
+  -h --help     Show this screen.
+  --version     Show version.
+";
+
+#[derive(Debug, Deserialize)]
+struct Args {
+    arg_output: String,
+    arg_ref_fasta: String,
+    arg_index: String,
+    arg_reads_fastq: String,
+    cmd_index: bool,
+    cmd_map: bool,
+    flag_version: bool,
+}
 
 /// Open a (possibly gzipped) file into a BufReader.
 fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
@@ -218,71 +247,43 @@ where
 }
 
 fn main() -> Result<(), Error> {
-    let matches = App::new("De-bruijn-mapping")
-        .version("1.0")
-        .author("Avi S. <avi.srivastava@10xgenomics.com>")
-        .about("De-bruijn graph based lightweight mapping for single-cell data")
-        .arg(
-            Arg::with_name("fasta")
-                .short("f")
-                .long("fasta")
-                .value_name("FILE")
-                .help(
-                    "Txome/Genome Input Fasta file, (Needed only with -m i.e. while making index)",
-                ),
-        ).arg(
-            Arg::with_name("reads")
-                .short("r")
-                .long("reads")
-                .value_name("FILE")
-                .help("Input Read Fastq file"),
-        ).arg(
-            Arg::with_name("index")
-                .short("i")
-                .long("index")
-                .value_name("FILE")
-                .help("Index of the reference")
-                .required(true),
-        ).arg(
-            Arg::with_name("make")
-                .help("tells to make the index")
-                .short("m")
-                .long("make")
-                .requires("index")
-                .requires("fasta"),
-        ).get_matches();
+    let args: Args = Docopt::new(USAGE)
+                            .and_then(|d| d.deserialize())
+                            .unwrap_or_else(|e| e.exit());
 
     // initializing logger
     pretty_env_logger::init_timed();
 
-    // obtain reader or fail with error (via the unwrap method)
-    let index_file = matches.values_of("index").unwrap().next().unwrap();
+    info!("Command line args:\n{:?}", args);
 
-    if matches.is_present("make") {
+    if args.flag_version {
+        println!{"{} {}", PKG_NAME, PKG_VERSION};
+    } else if args.cmd_index {
+        let fasta_fn = args.arg_ref_fasta;
+        let output_index_fn = args.arg_output;
+
         warn!("Creating the index, can take little time.");
-
-        // Gets a value for config if supplied by user
-        let fasta_file = matches.value_of("fasta").unwrap();
-        info!("Path for reference FASTA: {}", fasta_file);
+        info!("Path for reference FASTA: {}", fasta_fn);
 
         // if index not found then create a new one
-        let reader = fasta::Reader::from_file(fasta_file).unwrap();
+        let reader = fasta::Reader::from_file(fasta_fn).unwrap();
         let (seqs, _tx_ids, _tx_gene_map) = read_fasta(reader)?;
 
         //Set up the filter_kmer call based on the number of sequences.
         let index = build_index::build_pseudoaligner_index::<config::KmerType>(&seqs);
-        utils::write_obj(&index, index_file)?;
+        utils::write_obj(&index, output_index_fn)?;
 
         info!("Finished Indexing !");
-    } else {
-        // import the index if already present.
-        info!("Reading index from File: {:?}", index_file);
-        let index = utils::read_obj(index_file)?;
+    } else if args.cmd_map {
+        // import the index
+        let index_fn = args.arg_index;
+        let input_reads_fn = args.arg_reads_fastq;
+        
+        info!("Reading index from File: {:?}", index_fn);
+        let index = utils::read_obj(index_fn)?;
 
-        // obtain reader or fail with error (via the unwrap method)
-        let reads_file = matches.value_of("reads").unwrap();
-        info!("Path for Reads FASTQ: {}\n\n", reads_file);
-        let reads = fastq::Reader::from_file(reads_file)?;
+        info!("Path for Reads FASTQ: {}\n\n", input_reads_fn);
+        let reads = fastq::Reader::from_file(input_reads_fn)?;
 
         process_reads::<config::KmerType>(&index, reads);
     }
