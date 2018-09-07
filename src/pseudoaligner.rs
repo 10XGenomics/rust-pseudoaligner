@@ -1,13 +1,19 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
-use std;
-use std::cmp::Ordering;
+use std::{self, cmp::Ordering, fs::File, str};
+use std::io::{self, Write};
+use std::sync::{mpsc, Arc, Mutex};
 
+use bio::io::fastq;
 use boomphf::hashmap::NoKeyBoomHashMap;
+use crossbeam;
 use debruijn::dna_string::DnaString;
 use debruijn::filter::EqClassIdType;
 use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
+
+use config::{MAX_WORKER, READ_COVERAGE_THRESHOLD};
+use utils;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Pseudoaligner<K: Kmer> {
@@ -301,4 +307,103 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
             }
         }
     }
+}
+
+pub fn process_reads<K>(index: &Pseudoaligner<K>, reader: fastq::Reader<File>)
+where
+    K: Kmer + Sync + Send,
+{
+    info!("Done Reading index");
+    info!("Starting Multi-threaded Mapping");
+
+    let (tx, rx) = mpsc::sync_channel(MAX_WORKER);
+    let atomic_reader = Arc::new(Mutex::new(reader.records()));
+
+    info!("Spawning {} threads for Mapping.\n", MAX_WORKER);
+    crossbeam::scope(|scope| {
+        for _ in 0..MAX_WORKER {
+            let tx = tx.clone();
+            let reader = Arc::clone(&atomic_reader);
+
+            scope.spawn(move || {
+                loop {
+                    // If work is available, do that work.
+                    match utils::get_next_record(&reader) {
+                        Some(result_record) => {
+                            let record = match result_record {
+                                Ok(record) => record,
+                                Err(err) => panic!("Error {:?} in reading fastq", err),
+                            };
+
+                            let dna_string = str::from_utf8(record.seq()).unwrap();
+                            let seq = DnaString::from_dna_string(dna_string);
+                            let read_data = index.map_read(&seq);
+
+                            let wrapped_read_data = match read_data {
+                                Some((eq_class, coverage)) => {
+                                    if coverage >= READ_COVERAGE_THRESHOLD && eq_class.is_empty() {
+                                        Some((true, record.id().to_owned(), eq_class, coverage))
+                                    } else {
+                                        Some((false, record.id().to_owned(), eq_class, coverage))
+                                    }
+                                }
+                                None => Some((false, record.id().to_owned(), Vec::new(), 0)),
+                            };
+
+                            tx.send(wrapped_read_data).expect("Could not send data!");
+                        }
+                        None => {
+                            // send None to tell receiver that the queue ended
+                            tx.send(None).expect("Could not send data!");
+                            break;
+                        }
+                    }; //end-match
+                } // end loop
+            }); //end-scope
+        } // end-for
+
+        let mut read_counter: usize = 0;
+        let mut mapped_read_counter: usize = 0;
+        let mut dead_thread_count = 0;
+
+        for eq_class in rx.iter() {
+            match eq_class {
+                None => {
+                    dead_thread_count += 1;
+                    if dead_thread_count == MAX_WORKER {
+                        drop(tx);
+                        // can't continue with a flag check
+                        // weird Rusty way !
+                        // Consume whatever is remaining
+                        // Not worrying about counters; hunch is their
+                        // should be less
+                        for eq_class in rx.iter() {
+                            eq_class.map_or((), |eq_class| eprintln!("{:?}", eq_class));
+                        }
+                        break;
+                    }
+                }
+                Some(read_data) => {
+                    println!("{:?}", read_data);
+
+                    if read_data.0 {
+                        mapped_read_counter += 1;
+                    }
+
+                    read_counter += 1;
+                    if read_counter % 1_000_000 == 0 {
+                        let frac_mapped = mapped_read_counter as f32 * 100.0 / read_counter as f32;
+                        eprint!(
+                            "\rDone Mapping {} reads w/ Rate: {}",
+                            read_counter, frac_mapped
+                        );
+                        io::stderr().flush().expect("Could not flush stdout");
+                    }
+                } // end-Some
+            } // end-match
+        } // end-for
+    }); //end crossbeam
+
+    eprintln!();
+    info!("Done Mapping Reads");
 }

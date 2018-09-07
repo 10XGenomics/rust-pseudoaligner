@@ -3,7 +3,9 @@
 extern crate bincode;
 extern crate bio;
 extern crate boomphf;
+extern crate crossbeam;
 extern crate debruijn;
+extern crate flate2;
 extern crate failure;
 extern crate rayon;
 
@@ -12,6 +14,9 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate serde;
+
+#[macro_use]
+extern crate log;
 
 pub mod build_index;
 pub mod config;
