@@ -1,5 +1,47 @@
 Download test data from:
 ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz
 
-Small test set created by:
+Small test transcriptome created by:
 head -n 50000 gencode.v28.transcripts.fa > gencode_small.fa
+
+Small test fastq created from the above by sampling every 15th line, so long as it isn't a sequence name.
+We create two more sets of sequences by 1) swapping a random base to A [or A -> C]
+and 2) reversing (no complement)
+
+```
+QUAL="IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII"
+
+cat gencode_small.fa | \
+  awk '{
+if(!($0~/^>/) && length($0) == 60 && NR % 15 == 0) {
+  print "@gencode_small_line"NR;
+  print $0;
+  print "+";
+  print "'$QUAL'";
+  idx = 1 + int((rand()*60) % 60);
+  if(substr($0, idx, 1) == "A") {
+    err = "C";
+  } else {
+    err = "A";
+  }
+  print "@gencode_small_line"NR"_err"idx;
+  print substr($0, 1, idx-1)""err""substr($0, idx+1);
+  print "+";
+  print "'$QUAL'";
+}}' > tmp1
+
+cat gencode_small.fa | \
+  rev |
+  awk '{
+if(!($0~/>$/) && length($0) == 60 && NR % 15 == 0) {
+  print "@gencode_small_line"NR"_rev";
+  print $0;
+  print "+";
+  print "'$QUAL'";
+}}' > tmp2
+
+cat tmp1 tmp2 > small.fq
+```
+
+
+
