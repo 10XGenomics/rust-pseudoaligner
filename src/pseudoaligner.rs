@@ -12,7 +12,7 @@ use debruijn::filter::EqClassIdType;
 use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
 
-use config::{MAX_WORKER, READ_COVERAGE_THRESHOLD};
+use config::{MAX_WORKER, READ_COVERAGE_THRESHOLD, LEFT_EXTEND_FRACTION};
 use utils;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -42,7 +42,7 @@ where
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
         let mut colors: Vec<u32> = Vec::new();
-        let left_extend_threshold = (0.4 * read_length as f32) as usize;
+        let left_extend_threshold = (LEFT_EXTEND_FRACTION * read_length as f64) as usize;
 
         let mut kmer_pos: usize = 0;
         let kmer_length = K::k();
