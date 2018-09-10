@@ -30,7 +30,7 @@ where
         .unwrap();
 
     if seqs.len() >= U32_MAX {
-        panic!("Too many ({}) sequneces to handle.", seqs.len());
+        panic!("Too many ({}) sequences to handle.", seqs.len());
     }
 
     println!("Sharding sequences...");
@@ -58,16 +58,16 @@ where
         }).collect_into_vec(&mut shard_dbgs);
 
     println!();
-    println!("Done seprate de-bruijn graph construction");
+    println!("Done separate de Bruijn graph construction");
     println!("Starting merging disjoint graphs");
 
     //println!("{:?}", summarizer);
     let dbg = merge_shard_dbgs(shard_dbgs);
-    println!("Merger of graph Complete");
+    println!("Merger of graphs complete");
 
     let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
 
-    println!("Indexing Debruijn graph");
+    println!("Indexing de Bruijn graph");
     let dbg_index = make_dbg_index(&dbg);
     Pseudoaligner::new(dbg, eq_classes, dbg_index)
 }

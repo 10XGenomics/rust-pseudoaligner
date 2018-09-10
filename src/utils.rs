@@ -61,7 +61,7 @@ pub fn read_fasta(
     let mut tx_ids = Vec::new();
     let mut tx_to_gene_map = HashMap::new();
 
-    info!("Starting Reading the Fasta file\n");
+    info!("Starting reading the Fasta file\n");
     for result in reader.records() {
         // obtain record or fail with error
         let record = result?;
@@ -79,14 +79,14 @@ pub fn read_fasta(
 
         transcript_counter += 1;
         if transcript_counter % 100 == 0 {
-            print!("\r Done Reading {} sequences", transcript_counter);
+            print!("\r Done reading {} sequences", transcript_counter);
             io::stdout().flush().expect("Could not flush stdout");
         }
     }
 
     println!();
     info!(
-        "Done Reading the Fasta file; Found {} sequences",
+        "Done reading the Fasta file; Found {} sequences",
         transcript_counter
     );
 
