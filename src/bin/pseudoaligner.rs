@@ -16,16 +16,12 @@ extern crate log;
 extern crate serde;
 
 // Import some modules
+use bio::io::{fasta, fastq};
+use docopt::Docopt;
+use failure::Error;
 use std::str;
 
-use bio::io::{fasta, fastq};
-
-use failure::Error;
-
-use docopt::Docopt;
-
-use debruijn_mapping::{build_index, config, utils};
-use debruijn_mapping::pseudoaligner::{process_reads};
+use debruijn_mapping::{build_index, config, pseudoaligner, utils};
 
 const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
 const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -58,84 +54,33 @@ fn main() -> Result<(), Error> {
     let args: Args = Docopt::new(USAGE)
                             .and_then(|d| d.deserialize())
                             .unwrap_or_else(|e| e.exit());
-
-    // initializing logger
+    // initialize logger
     pretty_env_logger::init_timed();
-
     info!("Command line args:\n{:?}", args);
 
     if args.flag_version {
         println!{"{} {}", PKG_NAME, PKG_VERSION};
     } else if args.cmd_index {
-        let fasta_fn = args.arg_ref_fasta;
-        let output_index_fn = args.arg_output;
+        info!("Building index from fasta");
+        let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
+        let (transcripts, _tx_ids, _tx_gene_map) = utils::read_transcripts(fasta)?;
+        let index = build_index::build_pseudoaligner_index::<config::KmerType>(&transcripts)?;
+        info!("Finished building index!");
 
-        warn!("Creating the index, can take little time.");
-        info!("Path for reference FASTA: {}", fasta_fn);
-
-        // if index not found then create a new one
-        let reader = fasta::Reader::from_file(fasta_fn)?;
-        let (seqs, _tx_ids, _tx_gene_map) = utils::read_fasta(reader)?;
-
-        //Set up the filter_kmer call based on the number of sequences.
-        let index = build_index::build_pseudoaligner_index::<config::KmerType>(&seqs);
-        utils::write_obj(&index, output_index_fn)?;
-
-        info!("Finished Indexing !");
+        info!("Writing index to disk");
+        utils::write_obj(&index, args.arg_output)?;
+        info!("Finished writing index!");
     } else if args.cmd_map {
-        // import the index
-        let index_fn = args.arg_index;
-        let input_reads_fn = args.arg_reads_fastq;
-        
-        info!("Reading index from File: {:?}", index_fn);
-        let index = utils::read_obj(index_fn)?;
+        info!("Reading index from disk");
+        let index = utils::read_obj(args.arg_index)?;
+        info!("Finished reading index!");
 
-        info!("Path for Reads FASTQ: {}\n\n", input_reads_fn);
-        let reads = fastq::Reader::from_file(input_reads_fn)?;
-
-        process_reads::<config::KmerType>(&index, reads);
+        info!("Mapping reads from fastq");
+        let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
+        pseudoaligner::process_reads::<config::KmerType>(&index, reads);
+        info!("Finished mapping reads!");
     }
 
-    info!("Finished Processing !");
+    info!("Done!");
     Ok(())
 }
-
-/*
-#[cfg(test)]
-mod tests{
-    use std;
-    use utils;
-    use bincode;
-    use debruijn::{Dir, Kmer, Exts, kmer};
-
-    pub type KmerType = kmer::Kmer32;
-
-    const 
-
-    #[test]
-    fn test_kmer_search() {
-        let tx_file = "/mnt/home/avi.srivastava/rust_avi/rust-utils-10x/sc_mapping/unit_test/test.small.index";
-        println!("Reading index from File: {:?}", index_file);
-        let input_dump: Result<utils::Index<KmerType, Exts, u8>,
-                               Box<bincode::ErrorKind>> =
-            utils::read_obj(index_file);
-
-        let ref_index = input_dump.expect("Can't read the index");
-
-        println!("Starting Unit test for color extraction");
-        let test_kmer = KmerType::from_ascii(b"GTTAACTTGCCGTCAGCCTTTTCTTTGACCTCTTCTTT");
-        let (nid, _, _) = match ref_index.get_dbg().find_link(test_kmer, Dir::Right){
-            Some(links) => links,
-            None => (std::usize::MAX, Dir::Right, false),
-        };
-        if nid == std::usize::MAX {
-            eprintln!("ERROR");
-        }
-        println!("Found Colors are");
-        let eqclass_id = ref_index.get_dbg().get_node(nid).data();
-        let eq_classes = ref_index.get_eq_classes();
-        let labels = eq_classes[*eqclass_id as usize].clone();
-        assert_eq!(labels, vec![0, 1]);
-    }
-}
-*/

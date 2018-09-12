@@ -53,7 +53,7 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
     }
 }
 
-pub fn read_fasta(
+pub fn read_transcripts(
     reader: fasta::Reader<File>,
 ) -> Result<(Vec<DnaString>, Vec<String>, HashMap<String, String>), Error> {
     let mut seqs = Vec::new();

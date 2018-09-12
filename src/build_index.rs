@@ -12,6 +12,7 @@ use debruijn::graph::*;
 use debruijn::*;
 
 use boomphf;
+use failure::Error;
 use config::{MAX_WORKER, MIN_KMERS, U32_MAX};
 use pseudoaligner::Pseudoaligner;
 use rayon;
@@ -19,15 +20,14 @@ use rayon::prelude::*;
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
 
-pub fn build_pseudoaligner_index<K>(seqs: &[DnaString]) -> Pseudoaligner<K>
+pub fn build_pseudoaligner_index<K>(seqs: &[DnaString]) -> Result<Pseudoaligner<K>, Error>
 where
     K: Kmer + Sync + Send,
 {
     // Thread pool Configuration for calling BOOMphf
     rayon::ThreadPoolBuilder::new()
         .num_threads(MAX_WORKER)
-        .build_global()
-        .unwrap();
+        .build_global()?;
 
     if seqs.len() >= U32_MAX {
         panic!("Too many ({}) sequences to handle.", seqs.len());
@@ -65,11 +65,13 @@ where
     let dbg = merge_shard_dbgs(shard_dbgs);
     println!("Merger of graphs complete");
 
+    // TODO update rust-debruijn version and fix this
+    // let eq_classes = Arc::try_unwrap(summarizer).get_eq_classes();
     let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
 
     println!("Indexing de Bruijn graph");
     let dbg_index = make_dbg_index(&dbg);
-    Pseudoaligner::new(dbg, eq_classes, dbg_index)
+    Ok(Pseudoaligner::new(dbg, eq_classes, dbg_index))
 }
 
 type PmerType = debruijn::kmer::Kmer6;
