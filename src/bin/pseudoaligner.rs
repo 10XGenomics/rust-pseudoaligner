@@ -77,7 +77,7 @@ fn main() -> Result<(), Error> {
 
         info!("Mapping reads from fastq");
         let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
-        pseudoaligner::process_reads::<config::KmerType>(&index, reads);
+        pseudoaligner::process_reads::<config::KmerType>(&index, reads)?;
         info!("Finished mapping reads!");
     }
 

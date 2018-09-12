@@ -66,8 +66,7 @@ where
     println!("Merger of graphs complete");
 
     // TODO update rust-debruijn version and fix this
-    // let eq_classes = Arc::try_unwrap(summarizer).get_eq_classes();
-    let eq_classes = Arc::try_unwrap(summarizer).ok().unwrap().get_eq_classes();
+    let eq_classes = summarizer.get_eq_classes();
 
     println!("Indexing de Bruijn graph");
     let dbg_index = make_dbg_index(&dbg);

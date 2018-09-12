@@ -11,6 +11,7 @@ use debruijn::dna_string::DnaString;
 use debruijn::filter::EqClassIdType;
 use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
+use failure::Error;
 
 use config::{MAX_WORKER, READ_COVERAGE_THRESHOLD, LEFT_EXTEND_FRACTION};
 use utils;
@@ -309,7 +310,7 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     }
 }
 
-pub fn process_reads<K>(index: &Pseudoaligner<K>, reader: fastq::Reader<File>)
+pub fn process_reads<K>(index: &Pseudoaligner<K>, reader: fastq::Reader<File>) -> Result<(), Error>
 where
     K: Kmer + Sync + Send,
 {
@@ -406,4 +407,5 @@ where
 
     eprintln!();
     info!("Done Mapping Reads");
+    Ok(())
 }
