@@ -1,6 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 use std::{self, cmp::Ordering, fs::File, str};
+// use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -21,6 +22,8 @@ pub struct Pseudoaligner<K: Kmer> {
     dbg: DebruijnGraph<K, EqClassIdType>,
     eq_classes: Vec<Vec<u32>>,
     dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
+    // tx_names: Vec<String>,
+    // tx_gene_mapping: HashMap<String, String>,
 }
 
 impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
@@ -28,8 +31,10 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         dbg: DebruijnGraph<K, EqClassIdType>,
         eq_classes: Vec<Vec<u32>>,
         dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
+        // tx_names: Vec<String>,
+        // tx_gene_mapping: HashMap<String, String>
     ) -> Pseudoaligner<K> {
-        Pseudoaligner {dbg, eq_classes, dbg_index}
+        Pseudoaligner {dbg, eq_classes, dbg_index} //, tx_names, tx_gene_mapping}
     }
 
     /// Pseudo-align `read_seq` to determine its the equivalence class.
@@ -305,7 +310,8 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
 }
 
 pub fn process_reads<K: Kmer + Sync + Send>(
-    index: &Pseudoaligner<K>, reader: fastq::Reader<File>
+    reader: fastq::Reader<File>,
+    index: &Pseudoaligner<K>,
 ) -> Result<(), Error> {
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");

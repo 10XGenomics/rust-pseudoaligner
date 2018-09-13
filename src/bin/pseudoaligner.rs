@@ -21,7 +21,8 @@ use docopt::Docopt;
 use failure::Error;
 use std::str;
 
-use debruijn_mapping::{build_index, config, pseudoaligner, utils};
+use debruijn_mapping::{config, utils};
+use debruijn_mapping::{build_index::build_index, pseudoaligner::process_reads};
 
 const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
 const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -29,24 +30,27 @@ const USAGE: &'static str = "
 De-bruijn-mapping
 
 Usage:
-  pseudoaligner index <output> <ref-fasta>
-  pseudoaligner map <index> <reads-fastq>
+  pseudoaligner index -i <index> <ref-fasta>
+  pseudoaligner map [-l -o <outdir>] -i <index> <reads-fastq>
   pseudoaligner -h | --help
   pseudoaligner --version 
 
 Options:
+  -l --long     Long output format (one line per read-transcript mapping)
+  -o --outdir   Output directory
   -h --help     Show this screen.
   --version     Show version.
 ";
 
 #[derive(Debug, Deserialize)]
 struct Args {
-    arg_output: String,
     arg_ref_fasta: String,
     arg_index: String,
     arg_reads_fastq: String,
+    arg_outdir: Option<String>,
     cmd_index: bool,
     cmd_map: bool,
+    flag_long: bool,
     flag_version: bool,
 }
 
@@ -63,12 +67,14 @@ fn main() -> Result<(), Error> {
     } else if args.cmd_index {
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
-        let (transcripts, _tx_ids, _tx_gene_map) = utils::read_transcripts(fasta)?;
-        let index = build_index::build_pseudoaligner_index::<config::KmerType>(&transcripts)?;
+        let (seqs, _tx_names, _tx_gene_map) = utils::read_transcripts(fasta)?;
+        let index = build_index::<config::KmerType>(
+            &seqs//, &tx_names, &tx_gene_map
+        )?;
         info!("Finished building index!");
 
         info!("Writing index to disk");
-        utils::write_obj(&index, args.arg_output)?;
+        utils::write_obj(&index, args.arg_index)?;
         info!("Finished writing index!");
     } else if args.cmd_map {
         info!("Reading index from disk");
@@ -77,7 +83,7 @@ fn main() -> Result<(), Error> {
 
         info!("Mapping reads from fastq");
         let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
-        pseudoaligner::process_reads::<config::KmerType>(&index, reads)?;
+        process_reads::<config::KmerType>(reads, &index)?;
         info!("Finished mapping reads!");
     }
 

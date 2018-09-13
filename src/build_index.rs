@@ -1,6 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 use std::sync::Arc;
+// use std::collections::HashMap;
 
 use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap};
 use config::{KmerType, MEM_SIZE, REPORT_ALL_KMER, STRANDED};
@@ -20,8 +21,10 @@ use rayon::prelude::*;
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
 
-pub fn build_pseudoaligner_index<K: Kmer + Sync + Send>(
-    seqs: &[DnaString]
+pub fn build_index<K: Kmer + Sync + Send>(
+    seqs: &[DnaString],
+    // tx_names: &Vec<String>,
+    // tx_gene_map: &HashMap<String, String>
 ) -> Result<Pseudoaligner<K>, Error> {
     // Thread pool Configuration for calling BOOMphf
     rayon::ThreadPoolBuilder::new()
@@ -69,7 +72,9 @@ pub fn build_pseudoaligner_index<K: Kmer + Sync + Send>(
 
     println!("Indexing de Bruijn graph");
     let dbg_index = make_dbg_index(&dbg);
-    Ok(Pseudoaligner::new(dbg, eq_classes, dbg_index))
+    Ok(Pseudoaligner::new(
+        dbg, eq_classes, dbg_index, // tx_names.clone(), tx_gene_map.clone()
+    ))
 }
 
 type PmerType = debruijn::kmer::Kmer6;
