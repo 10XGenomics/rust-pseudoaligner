@@ -23,21 +23,15 @@ pub struct Pseudoaligner<K: Kmer> {
     dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
 }
 
-impl<K> Pseudoaligner<K>
-where
-    K: Kmer + Sync + Send,
-{
+impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     pub fn new(
         dbg: DebruijnGraph<K, EqClassIdType>,
         eq_classes: Vec<Vec<u32>>,
         dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
     ) -> Pseudoaligner<K> {
-        Pseudoaligner {
-            dbg,
-            eq_classes,
-            dbg_index,
-        }
+        Pseudoaligner {dbg, eq_classes, dbg_index}
     }
+
     /// Pseudo-align `read_seq` to determine its the equivalence class.
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
         let read_length = read_seq.len();
@@ -310,10 +304,9 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     }
 }
 
-pub fn process_reads<K>(index: &Pseudoaligner<K>, reader: fastq::Reader<File>) -> Result<(), Error>
-where
-    K: Kmer + Sync + Send,
-{
+pub fn process_reads<K: Kmer + Sync + Send>(
+    index: &Pseudoaligner<K>, reader: fastq::Reader<File>
+) -> Result<(), Error> {
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
 

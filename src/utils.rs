@@ -93,12 +93,9 @@ pub fn read_transcripts(
     Ok((seqs, tx_ids, tx_to_gene_map))
 }
 
-pub fn get_next_record<R>(
+pub fn get_next_record<R: io::Read>(
     reader: &Arc<Mutex<fastq::Records<R>>>,
-) -> Option<Result<fastq::Record, io::Error>>
-where
-    R: io::Read,
-{
+) -> Option<Result<fastq::Record, io::Error>> {
     let mut lock = reader.lock().unwrap();
     lock.next()
 }

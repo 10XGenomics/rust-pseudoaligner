@@ -20,10 +20,9 @@ use rayon::prelude::*;
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
 
-pub fn build_pseudoaligner_index<K>(seqs: &[DnaString]) -> Result<Pseudoaligner<K>, Error>
-where
-    K: Kmer + Sync + Send,
-{
+pub fn build_pseudoaligner_index<K: Kmer + Sync + Send>(
+    seqs: &[DnaString]
+) -> Result<Pseudoaligner<K>, Error> {
     // Thread pool Configuration for calling BOOMphf
     rayon::ThreadPoolBuilder::new()
         .num_threads(MAX_WORKER)
@@ -86,13 +85,10 @@ lazy_static! {
     };
 }
 
-fn partition_contigs<'a, K>(
+fn partition_contigs<'a, K: Kmer>(
     contig: &'a DnaString,
     contig_id: u32,
-) -> Vec<(u16, u32, DnaStringSlice<'a>, Exts)>
-where
-    K: Kmer,
-{
+) -> Vec<(u16, u32, DnaStringSlice<'a>, Exts)> {
     // One FASTA entry possibly broken into multiple contigs
     // based on the location of `N` int he sequence.
 
