@@ -1,7 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 use std::{self, cmp::Ordering, fs::File, str};
-// use std::collections::HashMap;
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -22,8 +22,8 @@ pub struct Pseudoaligner<K: Kmer> {
     dbg: DebruijnGraph<K, EqClassIdType>,
     eq_classes: Vec<Vec<u32>>,
     dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
-    // tx_names: Vec<String>,
-    // tx_gene_mapping: HashMap<String, String>,
+    tx_names: Vec<String>,
+    tx_gene_mapping: HashMap<String, String>,
 }
 
 impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
@@ -31,10 +31,10 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         dbg: DebruijnGraph<K, EqClassIdType>,
         eq_classes: Vec<Vec<u32>>,
         dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
-        // tx_names: Vec<String>,
-        // tx_gene_mapping: HashMap<String, String>
+        tx_names: Vec<String>,
+        tx_gene_mapping: HashMap<String, String>
     ) -> Pseudoaligner<K> {
-        Pseudoaligner {dbg, eq_classes, dbg_index} //, tx_names, tx_gene_mapping}
+        Pseudoaligner {dbg, eq_classes, dbg_index, tx_names, tx_gene_mapping}
     }
 
     /// Pseudo-align `read_seq` to determine its the equivalence class.
