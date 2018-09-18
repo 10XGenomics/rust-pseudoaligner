@@ -31,15 +31,14 @@ De-bruijn-mapping
 
 Usage:
   pseudoaligner index -i <index> <ref-fasta>
-  pseudoaligner map [-l -o <outdir>] -i <index> <reads-fastq>
-  pseudoaligner -h | --help
-  pseudoaligner --version 
+  pseudoaligner map [options] -i <index> <reads-fastq>
+  pseudoaligner -h | --help | --version
 
 Options:
-  -l --long     Long output format (one line per read-transcript mapping)
-  -o --outdir   Output directory
-  -h --help     Show this screen.
-  --version     Show version.
+  -l --long         Long output format (one line per read-transcript mapping)
+  -o --outdir DIR   Output directory
+  -h --help         Show this screen.
+  --version         Show version.
 ";
 
 #[derive(Debug, Deserialize)]
@@ -47,7 +46,7 @@ struct Args {
     arg_ref_fasta: String,
     arg_index: String,
     arg_reads_fastq: String,
-    arg_outdir: Option<String>,
+    flag_outdir: Option<String>,
     cmd_index: bool,
     cmd_map: bool,
     flag_long: bool,
@@ -82,8 +81,9 @@ fn main() -> Result<(), Error> {
         info!("Finished reading index!");
 
         info!("Mapping reads from fastq");
+        let outdir = args.flag_outdir;
         let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
-        process_reads::<config::KmerType>(reads, &index)?;
+        process_reads::<config::KmerType, _>(reads, &index, outdir)?;
         info!("Finished mapping reads!");
     }
 

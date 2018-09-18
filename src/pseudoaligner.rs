@@ -2,7 +2,9 @@
 
 use std::{self, cmp::Ordering, fs::File, str};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::io::{self, Write};
+use std::path::Path;
 use std::sync::{mpsc, Arc, Mutex};
 
 use bio::io::fastq;
@@ -309,12 +311,14 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     }
 }
 
-pub fn process_reads<K: Kmer + Sync + Send>(
+pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
     reader: fastq::Reader<File>,
     index: &Pseudoaligner<K>,
+    outdir: Option<P>,
 ) -> Result<(), Error> {
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
+    info!("Output directory: {:?}", outdir);
 
     let (tx, rx) = mpsc::sync_channel(MAX_WORKER);
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
