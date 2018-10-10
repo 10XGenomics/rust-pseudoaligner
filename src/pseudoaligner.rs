@@ -21,11 +21,11 @@ use utils;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Pseudoaligner<K: Kmer> {
-    dbg: DebruijnGraph<K, EqClassIdType>,
+    pub dbg: DebruijnGraph<K, EqClassIdType>,
     eq_classes: Vec<Vec<u32>>,
     dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
-    tx_names: Vec<String>,
-    tx_gene_mapping: HashMap<String, String>,
+    pub tx_names: Vec<String>,
+    pub tx_gene_mapping: HashMap<String, String>,
 }
 
 impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
