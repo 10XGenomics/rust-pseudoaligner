@@ -35,11 +35,12 @@ Usage:
   pseudoaligner -h | --help | --version
 
 Options:
-  -l --long         Long output format (one line per read-transcript mapping)
   -o --outdir DIR   Output directory
   -h --help         Show this screen.
   --version         Show version.
 ";
+  // -l --long         Long output format (one line per read-transcript mapping)
+
 
 #[derive(Debug, Deserialize)]
 struct Args {
@@ -49,7 +50,7 @@ struct Args {
     flag_outdir: Option<String>,
     cmd_index: bool,
     cmd_map: bool,
-    flag_long: bool,
+    // flag_long: bool,
     flag_version: bool,
 }
 
