@@ -1,6 +1,6 @@
 [package]
 name = "debruijn_mapping"
-version = "0.1.0"
+version = "0.2"
 authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
 
 [dependencies]
