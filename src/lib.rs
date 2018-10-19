@@ -7,6 +7,7 @@ extern crate crossbeam;
 extern crate debruijn;
 extern crate flate2;
 extern crate failure;
+extern crate itertools;
 extern crate rayon;
 
 #[macro_use]
@@ -20,5 +21,6 @@ extern crate log;
 
 pub mod build_index;
 pub mod config;
+pub mod mappability;
 pub mod pseudoaligner;
 pub mod utils;

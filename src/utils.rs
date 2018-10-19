@@ -3,7 +3,7 @@
 //! Utility methods.
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fs::File;
+use std::fs::{File};
 use std::io::{self, Write, BufRead, BufReader, BufWriter};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -17,6 +17,9 @@ use bio::io::{fasta, fastq};
 use debruijn::dna_string::DnaString;
 
 use config;
+use mappability::MappabilityRecord;
+
+const MAPPABILITY_HEADER_STRING: &'static str = "tx_name\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
 
 pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(
     g: &T,
@@ -136,4 +139,36 @@ pub fn get_next_record<R: io::Read>(
 ) -> Option<Result<fastq::Record, io::Error>> {
     let mut lock = reader.lock().unwrap();
     lock.next()
+}
+
+pub fn open_file<P: AsRef<Path>>(
+    filename: &str, outdir: P
+) -> Result<File, Error> {
+    let out_fn = outdir.as_ref().join(filename);
+    let outfile = File::create(&out_fn)?;
+    Ok(outfile)
+}
+
+pub fn write_mappability_tsv<P: AsRef<Path>>(
+    records: Vec<MappabilityRecord>,
+    outdir: P
+) -> Result<(), Error> {
+
+    let mut outfile = open_file("tx_mappability.tsv", outdir)?;
+
+    outfile.write(MAPPABILITY_HEADER_STRING.as_bytes())?;
+
+    for record in records {
+        write!(outfile,
+               "{}\t{}\t{}\t{}\t{}\n",
+               record.tx_name,
+               record.gene_name,
+               record.total_kmer_count(),
+               record.fraction_unique_tx(),
+               record.fraction_unique_gene()
+
+        )?;
+    }
+
+    Ok(())
 }

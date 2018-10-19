@@ -314,7 +314,7 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
 pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
     reader: fastq::Reader<File>,
     index: &Pseudoaligner<K>,
-    outdir: Option<P>,
+    outdir: P,
 ) -> Result<(), Error> {
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
