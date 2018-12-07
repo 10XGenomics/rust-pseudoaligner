@@ -1,40 +1,30 @@
 [package]
-name = "pseudoaligner"
-version = "0.1.0"
-authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>"]
+name = "debruijn_mapping"
+version = "0.2.0"
+authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
 
 [dependencies]
-bio = "*"
-clap = "~2.31"
-itertools = ">=0.7"
-log = "0.4"
-bincode = "1.0.0"
-flate2 = "1.0.1"
-serde = "1"
-failure = "0.1.2"
-num = "0.2"
+bincode = "1.0"
+bio = "0.22"
 crossbeam = "0.4"
-rand = "0.5"
-csv = "1.0.0"
-rayon = "1.0.1"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
+docopt = "1.0"
+failure = "0.1"
+flate2 = "1.0"
+itertools = "0.7"
+lazy_static = "0.2"
+log = "0.4"
+rayon = "1.0"
+serde = "1.0"
 
 [dependencies.pretty_env_logger]
 git = "https://github.com/k3yavi/pretty-env-logger"
 branch = "master"
 
-[dependencies.extprim]
-version = ">=1.6.0"
-features = ["serde"]
-
 [dependencies.boomphf]
 git = "https://github.com/10XGenomics/rust-boomphf"
 branch = "master"
 features = ["serde", "fast-constructors"]
-
-[dependencies.concurrent-hashmap]
-version = "0.2.1"
-default-features = false
 
 [profile.release]
 debug = true

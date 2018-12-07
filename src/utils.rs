@@ -1,261 +1,27 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 //! Utility methods.
-use std::boxed::Box;
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fs;
-use std::fs::File;
-use std::hash::Hash;
-use std::io::Write;
-use std::io::{BufRead, BufReader, BufWriter};
-use std::mem;
+use std::fs::{File};
+use std::io::{self, Write, BufRead, BufReader, BufWriter};
 use std::path::Path;
-use std::sync::mpsc::sync_channel;
 use std::sync::{Arc, Mutex};
 
-//use bincode;
-use bincode;
-use bincode::{deserialize_from, serialize_into};
-use crossbeam;
-use debruijn::filter::EqClassIdType;
-use debruijn::graph::DebruijnGraph;
-use debruijn::Kmer;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-
-use boomphf;
-use boomphf::hashmap::NoKeyBoomHashMap2;
-
-use failure::Error;
+use bincode::{self, deserialize_from, serialize_into};
+use failure::{self, Error};
 use flate2::read::MultiGzDecoder;
+use serde::{Serialize, de::DeserializeOwned};
 
-use config::MAX_WORKER;
+use bio::io::{fasta, fastq};
+use debruijn::dna_string::DnaString;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Index<K, D>
-where
-    K: Hash + Serialize,
-    D: Eq + Hash + Serialize,
-{
-    eqclasses: Vec<Vec<D>>,
-    dbg: DebruijnGraph<K, EqClassIdType>,
-    phf: NoKeyBoomHashMap2<K, usize, u32>,
-}
+use config;
+use mappability::MappabilityRecord;
 
-impl<K, D> Index<K, D>
-where
-    K: Hash + Serialize + Kmer + Send + Sync + DeserializeOwned + Send + Sync,
-    D: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned,
-{
-    pub fn dump(
-        dbg: &DebruijnGraph<K, EqClassIdType>,
-        gene_order: Vec<String>,
-        eqclasses: &[Vec<D>],
-        index_path: &str,
-    ) {
-        info!("Dumping index into folder: {:?}", index_path);
-        match fs::create_dir(index_path) {
-            Err(err) => warn!("{:?}", err),
-            Ok(()) => info!("Creating folder {:?}", index_path),
-        }
+const MAPPABILITY_HEADER_STRING: &'static str = "tx_name\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
 
-        let data_type: usize = mem::size_of::<D>();
-        write_obj(&data_type, index_path.to_owned() + "/type.bin").expect("Can't dump data type");
-
-        let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
-        write_obj(&eqclasses, eqclass_file_name).expect("Can't dump classes");
-
-        info!("Found {} Equivalence classes", eqclasses.len());
-
-        let genes_file_name = index_path.to_owned() + "/genes.txt";
-        let mut file_handle = File::create(genes_file_name).expect("Unable to create file");
-        for i in gene_order {
-            writeln!(file_handle, "{}", i).expect("can't write gene names");
-        }
-
-        let dbg_file_name = index_path.to_owned() + "/dbg.bin";
-        write_obj(&dbg, dbg_file_name).expect("Can't dump debruijn graph");
-
-        let mut total_kmers = 0;
-        let kmer_length = K::k();
-        for node in dbg.iter_nodes() {
-            total_kmers += node.len() - kmer_length + 1;
-        }
-
-        info!("Total {:?} kmers to process in dbg", total_kmers);
-        let mphf = boomphf::Mphf::new_parallel_with_keys(1.7, dbg, None, total_kmers, MAX_WORKER);
-
-        let phf_file_name = index_path.to_owned() + "/phf.bin";
-        write_obj(&mphf, phf_file_name).expect("Can't dump phf");
-
-        const IO_THREADS: usize = 3;
-        info!("Done Creating Minimum Perfect Hash");
-        info!("Aligning positions with MPHF");
-        {
-            let mut node_ids = vec![0; total_kmers];
-            let mphf_ref = &mphf;
-            let (tx, rx) = sync_channel(IO_THREADS);
-
-            let work_queue = Arc::new(Mutex::new(dbg.into_iter()));
-
-            crossbeam::scope(|scope| {
-                for _ in 0..IO_THREADS {
-                    let work_queue = work_queue.clone();
-                    let tx = tx.clone();
-
-                    scope.spawn(move || {
-                        loop {
-                            let node = match work_queue.lock().unwrap().next() {
-                                None => break,
-                                Some(val) => val,
-                            };
-
-                            let node_id = node.node_id;
-                            let mut indices: Vec<u64> = Vec::new();
-
-                            for kmer in node {
-                                let index = match mphf_ref.try_hash(&kmer) {
-                                    None => panic!("can't find in hash"),
-                                    Some(index) => index,
-                                };
-                                indices.push(index);
-                            }
-
-                            tx.send((indices, node_id)).unwrap();
-                        } //end-loop
-                    }); //end-scope
-                } //end-threads-for
-
-                drop(tx);
-                for (data, node_id) in rx.iter() {
-                    for index in data {
-                        node_ids[index as usize] = node_id;
-                    }
-                }
-            }); //end-crossbeam
-
-            info!("Starting Dumping positions");
-            let pos_file_name = index_path.to_owned() + "/positions.bin";
-            write_obj(&node_ids, pos_file_name).expect("Can't dump positions");
-        } //end-positions scope
-
-        info!("Aligning offsets with MPHF");
-        {
-            let mut offsets: Vec<u32> = vec![0; total_kmers];
-            let mphf_ref = &mphf;
-            let (tx, rx) = sync_channel(IO_THREADS);
-
-            let work_queue = Arc::new(Mutex::new(dbg.into_iter()));
-
-            crossbeam::scope(|scope| {
-                for _ in 0..IO_THREADS {
-                    let work_queue = work_queue.clone();
-                    let tx = tx.clone();
-
-                    scope.spawn(move || {
-                        loop {
-                            let node = match work_queue.lock().unwrap().next() {
-                                None => break,
-                                Some(val) => val,
-                            };
-
-                            let mut indices: Vec<u64> = Vec::new();
-
-                            for kmer in node {
-                                let index = match mphf_ref.try_hash(&kmer) {
-                                    None => panic!("can't find in hash"),
-                                    Some(index) => index.clone(),
-                                };
-                                indices.push(index);
-                            }
-
-                            tx.send(indices).unwrap();
-                        } //end-loop
-                    }); //end-scope
-                } //end-threads-for
-
-                drop(tx);
-                for data in rx.iter() {
-                    for (offset, index) in data.iter().enumerate() {
-                        offsets[*index as usize] = offset as u32;
-                    }
-                }
-            }); //end-crossbeam
-
-            info!("Starting Dumping offsets");
-            let off_file_name = index_path.to_owned() + "/offsets.bin";
-            write_obj(&offsets, off_file_name).expect("Can't dump offsets");
-        } //end -offset scope
-    }
-
-    pub fn read(index_path: &str) -> Index<K, D> {
-        match fs::read_dir(index_path) {
-            Err(_) => panic!("{:?} directory not found", index_path),
-            Ok(_) => info!("Reading index from folder: {:?}", index_path),
-        }
-
-        let eqclass_file_name = index_path.to_owned() + "/eq_classes.bin";
-        let eqclasses: Vec<Vec<D>> = read_obj(eqclass_file_name).expect("Can't read classes");
-
-        let dbg_file_name = index_path.to_owned() + "/dbg.bin";
-        let dbg = read_obj(dbg_file_name).expect("Can't read debruijn graph");
-
-        let phf_file_name = index_path.to_owned() + "/phf.bin";
-        let phf = read_obj(phf_file_name).expect("Can't read phf");
-
-        let pos_file_name = index_path.to_owned() + "/positions.bin";
-        let positions = read_obj(pos_file_name).expect("Can't read pos");
-
-        let off_file_name = index_path.to_owned() + "/offsets.bin";
-        let offsets = read_obj(off_file_name).expect("Can't read offsets");
-
-        let phf = NoKeyBoomHashMap2::new_with_mphf(phf, positions, offsets);
-        Index {
-            eqclasses,
-            dbg,
-            phf,
-        }
-    }
-
-    pub fn get_phf(&self) -> &NoKeyBoomHashMap2<K, usize, u32> {
-        &self.phf
-    }
-
-    pub fn get_dbg(&self) -> &DebruijnGraph<K, EqClassIdType> {
-        &self.dbg
-    }
-
-    pub fn get_eq_classes(&self) -> &Vec<Vec<D>> {
-        &self.eqclasses
-    }
-}
-
-pub fn get_data_type(index_path: &str) -> usize {
-    match fs::read_dir(index_path) {
-        Err(_) => panic!("{:?} directory not found", index_path),
-        Ok(_) => info!("Reading index from folder: {:?}", index_path),
-    }
-
-    let data_type_file_name = index_path.to_owned() + "/type.bin";
-    let data_type: usize = read_obj(data_type_file_name).expect("Can't read data type");
-    data_type
-}
-
-/// Open a (possibly gzipped) file into a BufReader.
-fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
-    let r = File::open(p.as_ref())?;
-
-    if p.as_ref().extension().unwrap() == "gz" {
-        let gz = MultiGzDecoder::new(r);
-        let buf_reader = BufReader::with_capacity(32 * 1024, gz);
-        Ok(Box::new(buf_reader))
-    } else {
-        let buf_reader = BufReader::with_capacity(32 * 1024, r);
-        Ok(Box::new(buf_reader))
-    }
-}
-
-fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(
+pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(
     g: &T,
     filename: P,
 ) -> Result<(), bincode::Error> {
@@ -276,4 +42,133 @@ pub fn read_obj<T: DeserializeOwned, P: AsRef<Path> + Debug>(
     };
     let mut reader = BufReader::new(f);
     deserialize_from(&mut reader)
+}
+
+/// Open a (possibly gzipped) file into a BufReader.
+fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
+    let r = File::open(p.as_ref())?;
+
+    if p.as_ref().extension().unwrap() == "gz" {
+        let gz = MultiGzDecoder::new(r);
+        let buf_reader = BufReader::with_capacity(32 * 1024, gz);
+        Ok(Box::new(buf_reader))
+    } else {
+        let buf_reader = BufReader::with_capacity(32 * 1024, r);
+        Ok(Box::new(buf_reader))
+    }
+}
+
+pub fn read_transcripts(
+    reader: fasta::Reader<File>,
+) -> Result<(Vec<DnaString>, Vec<String>, HashMap<String, String>), Error> {
+    let mut seqs = Vec::new();
+    let mut transcript_counter = 0;
+    let mut tx_ids = Vec::new();
+    let mut tx_to_gene_map = HashMap::new();
+
+    let mut fasta_format: Option<u8> = None;
+
+    info!("Starting reading the Fasta file\n");
+    for result in reader.records() {
+        // obtain record or fail with error
+        let record = result?;
+
+        // Sequence
+        let dna_string = DnaString::from_acgt_bytes_hashn(record.seq(), record.id().as_bytes());
+        seqs.push(dna_string);
+
+        if let None = fasta_format {
+            fasta_format = detect_fasta_format(&record);
+        }
+
+        let (tx_id, gene_id) = extract_tx_gene_id(&record, fasta_format)?;
+
+        tx_ids.push(tx_id.clone());
+        tx_to_gene_map.insert(tx_id, gene_id);
+
+        transcript_counter += 1;
+        if transcript_counter % 100 == 0 {
+            print!("\r Done reading {} sequences", transcript_counter);
+            io::stdout().flush().expect("Could not flush stdout");
+        }
+    }
+
+    println!();
+    info!(
+        "Done reading the Fasta file; Found {} sequences",
+        transcript_counter
+    );
+
+    Ok((seqs, tx_ids, tx_to_gene_map))
+}
+
+pub fn detect_fasta_format(record: &fasta::Record) -> Option<u8> {
+    let id_tokens: Vec<&str> = record.id().split('|').collect();
+    if id_tokens.len() == 9 {
+        return Some(config::FASTA_FORMAT_GENCODE)
+    }
+    let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
+    if desc_tokens.len() == 5 {
+        Some(config::FASTA_FORMAT_ENSEMBL)
+    } else {
+        None
+    }
+}
+
+pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: Option<u8>) -> Result<(String, String), Error>{
+    match fasta_format {
+        Some(config::FASTA_FORMAT_GENCODE) => {
+            let id_tokens: Vec<&str> = record.id().split('|').collect();
+            let tx_id = id_tokens[0].to_string();
+            let gene_id = id_tokens[1].to_string();
+            Ok((tx_id, gene_id))
+        },
+        Some(config::FASTA_FORMAT_ENSEMBL) => {
+            let tx_id = record.id().to_string();
+            let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
+            let gene_tmp: Vec<&str> = desc_tokens[2].split(':').collect();
+            let gene_id = gene_tmp[1].to_string();
+            Ok((tx_id, gene_id))
+        },
+        _ => Err(failure::err_msg("Unknown fasta format in extract_tx_gene_id."))
+    }
+}
+
+pub fn get_next_record<R: io::Read>(
+    reader: &Arc<Mutex<fastq::Records<R>>>,
+) -> Option<Result<fastq::Record, io::Error>> {
+    let mut lock = reader.lock().unwrap();
+    lock.next()
+}
+
+pub fn open_file<P: AsRef<Path>>(
+    filename: &str, outdir: P
+) -> Result<File, Error> {
+    let out_fn = outdir.as_ref().join(filename);
+    let outfile = File::create(&out_fn)?;
+    Ok(outfile)
+}
+
+pub fn write_mappability_tsv<P: AsRef<Path>>(
+    records: Vec<MappabilityRecord>,
+    outdir: P
+) -> Result<(), Error> {
+
+    let mut outfile = open_file("tx_mappability.tsv", outdir)?;
+
+    outfile.write(MAPPABILITY_HEADER_STRING.as_bytes())?;
+
+    for record in records {
+        write!(outfile,
+               "{}\t{}\t{}\t{}\t{}\n",
+               record.tx_name,
+               record.gene_name,
+               record.total_kmer_count(),
+               record.fraction_unique_tx(),
+               record.fraction_unique_gene()
+
+        )?;
+    }
+
+    Ok(())
 }
