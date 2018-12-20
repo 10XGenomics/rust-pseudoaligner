@@ -16,16 +16,18 @@ extern crate log;
 extern crate serde;
 
 // Import some modules
+use std::collections::HashMap;
 use bio::io::{fasta, fastq};
 use docopt::Docopt;
 use failure::Error;
 use std::{env, fs};
 use std::{path::PathBuf, str};
 
-use debruijn_mapping::{config, utils};
+use debruijn_mapping::{config, utils, hla};
 use debruijn_mapping::{build_index::build_index,
                        pseudoaligner::process_reads,
                        mappability::analyze_graph};
+
 
 const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
 const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -34,7 +36,9 @@ De-bruijn-mapping
 
 Usage:
   pseudoaligner index -i <index> <ref-fasta>
+  pseudoaligner hla-index -i <index> <ref-fasta>
   pseudoaligner map -i <index> <reads-fastq>
+  pseudoaligner hla-map -i <index> <reads-fastq>
   pseudoaligner mappability [-o <outdir>] -i <index>
   pseudoaligner -h | --help | -v | --version
 
@@ -53,6 +57,7 @@ struct Args {
     arg_reads_fastq: String,
     flag_outdir: Option<String>,
     cmd_index: bool,
+    cmd_hla_index: bool,
     cmd_map: bool,
     cmd_mappability: bool,
 
@@ -93,6 +98,23 @@ fn main() -> Result<(), Error> {
         info!("Writing index to disk");
         utils::write_obj(&index, args.arg_index)?;
         info!("Finished writing index!");
+    } else if args.cmd_hla_index {
+
+        info!("Building index from fasta");
+        let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
+        let (seqs, tx_names, tx_allele_map) = hla::read_hla_cds(fasta)?;
+
+        let tx_gene_map = HashMap::new();
+
+        let index = build_index::<config::KmerType>(
+            &seqs, &tx_names, &tx_gene_map
+        )?;
+        info!("Finished building index!");
+
+        info!("Writing index to disk");
+        utils::write_obj(&(index, tx_allele_map), args.arg_index)?;
+        info!("Finished writing index!");
+
     } else if args.cmd_map {
         info!("Reading index from disk");
         let index = utils::read_obj(args.arg_index)?;
