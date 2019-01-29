@@ -4,7 +4,6 @@ version = "0.2.0"
 authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
 
 [dependencies]
-bincode = "1.0"
 bio = "0.22"
 crossbeam = "0.4"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
@@ -16,6 +15,10 @@ lazy_static = "0.2"
 log = "0.4"
 rayon = "1.0"
 serde = "1.0"
+
+[dependencies.bincode]
+version = "1.0"
+features = ["i128"]
 
 [dependencies.pretty_env_logger]
 git = "https://github.com/k3yavi/pretty-env-logger"
