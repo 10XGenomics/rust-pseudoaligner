@@ -39,11 +39,11 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         Pseudoaligner {dbg, eq_classes, dbg_index, tx_names, tx_gene_mapping}
     }
 
-    /// Pseudo-align `read_seq` to determine its the equivalence class.
-    pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
+    /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to
+    pub fn map_read_to_nodes(&self, read_seq: &DnaString) -> Option<(Vec<usize>, usize)> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
-        let mut colors: Vec<u32> = Vec::new();
+        let mut nodes: Vec<usize> = Vec::new();
         let left_extend_threshold = (LEFT_EXTEND_FRACTION * read_length as f64) as usize;
 
         let mut kmer_pos: usize = 0;
@@ -153,8 +153,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                     prev_kmer_offset = prev_node.sequence().len() - kmer_length;
 
                     // extract colors
-                    let color = prev_node.data();
-                    colors.push(*color);
+                    nodes.push(prev_node.node_id);
                 } else {
                     break;
                 }
@@ -173,8 +172,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                 read_coverage += kmer_length;
 
                 // extract colors
-                let color = node.data();
-                colors.push(*color);
+                nodes.push(node.node_id);
 
                 // length of remaining read after kmer match
                 let remaining_read = read_length - kmer_pos;
@@ -257,27 +255,37 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
             } // end-loop
         } //end-if
 
-        // Take the intersection of the sets
-        let colors_len = colors.len();
-        if colors_len == 0 {
+        if nodes.len() == 0 {
             if read_coverage != 0 {
                 panic!(
                     "Different read coverage {:?} than num of eqclasses {:?}",
-                    colors_len, read_coverage
+                    nodes.len(), read_coverage
                 );
             }
-
             None
         } else {
-            // Intersect the equivalence classes
-            let first_color = colors.pop().unwrap();
-            let mut eq_class = self.eq_classes[first_color as usize].clone();
+            Some((nodes, read_coverage))
+        }
+    }
 
-            for color in colors {
-                intersect(&mut eq_class, &self.eq_classes[color as usize]);
-            }
+    pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
 
-            Some((eq_class, read_coverage))
+        match self.map_read_to_nodes(read_seq) {
+            Some((mut nodes, read_coverage)) => {
+
+                // Intersect the equivalence classes
+                let first_node = nodes.pop().unwrap();
+                let first_color = self.dbg.get_node(first_node).data();
+                let mut eq_class = self.eq_classes[*first_color as usize].clone();
+
+                for node in nodes {
+                    let color = self.dbg.get_node(node).data();
+                    intersect(&mut eq_class, &self.eq_classes[*color as usize]);
+                }
+
+                Some((eq_class, read_coverage))
+            },
+            None => None
         }
     }
 }
@@ -309,6 +317,8 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
             }
         }
     }
+
+    v1.truncate(fill_idx1);
 }
 
 pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
@@ -411,4 +421,54 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
     eprintln!();
     info!("Done Mapping Reads");
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::collections::HashSet;
+    use std::iter::FromIterator;
+    use std::hash::Hash;
+
+
+    fn test_intersect<T: Hash + Eq + Clone + Ord + Debug>(v1: &Vec<T>, v2: &Vec<T>) {
+
+        let mut c1 = v1.clone();
+        let c2 = v2.clone();
+
+        let s1: HashSet<T> = HashSet::from_iter(c1.iter().cloned());
+        let s2: HashSet<T> = HashSet::from_iter(c2.iter().cloned());
+        let intersection = s1.intersection(&s2);
+
+        let mut int1: Vec<T> = intersection.cloned().collect();
+        int1.sort();
+        
+
+        intersect(&mut c1, &c2);
+
+        assert_eq!(c1, int1);
+    }
+
+    #[test]
+    fn intersect_test() {
+
+        let v1 = vec![1,2,3,4,5,6,7,8,9];
+        let v2 = vec![1,2,3];
+        let v3 = vec![1,4,5];
+        let v4 = vec![7,8,9];
+        let v5 = vec![9];
+        let v6: Vec<usize> = vec![];
+        let v7 = vec![1,2,3,6,7,8,9];
+        let v8 = vec![1,7,8,9,10];
+        let v9 = vec![10, 15, 20];
+        let v10 = vec![21, 22, 23];
+
+        let vecs = vec![v1,v2,v3,v4,v5,v6,v7,v8,v9,v10];
+
+        for v1 in vecs.iter() {
+            for v2 in vecs.iter() {
+                test_intersect(v1, v2);
+            }
+        }
+    }
 }

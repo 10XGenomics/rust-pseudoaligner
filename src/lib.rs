@@ -23,11 +23,13 @@ extern crate serde;
 #[macro_use]
 extern crate log;
 
+
+pub mod bam;
 pub mod build_index;
 pub mod config;
 pub mod mappability;
 pub mod pseudoaligner;
-#[macro_use]
 pub mod hla;
 pub mod utils;
-pub mod bam;
+mod locus;
+

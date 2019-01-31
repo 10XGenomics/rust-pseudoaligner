@@ -19,7 +19,7 @@ pub const U32_MAX: usize = u32::max_value() as usize;
 // Worker queue configs
 pub const MAX_WORKER: usize = 2;
 
-pub type KmerType = kmer::Kmer24;
+pub type KmerType = kmer::Kmer20;
 
 // Transcriptome mappability
 pub const MAPPABILITY_COUNTS_LEN: usize = 11;

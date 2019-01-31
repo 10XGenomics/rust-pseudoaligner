@@ -127,7 +127,7 @@ pub fn read_hla_cds(
 
         let tx_id = record.id();
 
-        tx_ids.push(tx_id.to_string());
+        tx_ids.push(allele_str.to_string());
         tx_to_allele_map.insert(tx_id.to_string(), allele);
 
         transcript_counter += 1;
