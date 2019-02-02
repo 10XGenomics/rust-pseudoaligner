@@ -136,19 +136,21 @@ pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_stri
 
         if let Some((nodes, cov)) = aln {
             for n in nodes {
-                //writeln!(idx, "{}\t{}\t{}\t{}", std::str::from_utf8(&rec.barcode).unwrap(), std::str::from_utf8(&rec.umi).unwrap(), eqv.len(), cov);
-                writeln!(hits, "{}\t{}\t{}", rid, n, cov);
+                let bc = std::str::from_utf8(&rec.barcode).unwrap();
+                let umi = std::str::from_utf8(&rec.umi).unwrap();
+                writeln!(hits, "{}\t{}\t{}\t{}\t{}", bc, umi, rid, n, cov)?;
             }
         }
     }
 
     for node in align.dbg.iter_nodes() {
-        let eq_class = node.data();
+        let eq_class_id = node.data();
         use debruijn::Mer;
         let seq_len = node.sequence().len();
+        let eq_class = &align.eq_classes[*eq_class_id as usize];
 
-        for tx_id in align.eq_classes[*eq_class as usize].iter() {
-            writeln!(idx, "{}\t{}\t{}\t{}", node.node_id, seq_len, tx_id, align.tx_names[*tx_id as usize]);
+        for tx_id in eq_class.iter() {
+            writeln!(idx, "{}\t{}\t{}\t{}\t{}", node.node_id, eq_class.len(), seq_len, tx_id, align.tx_names[*tx_id as usize]);
         }
     }
 

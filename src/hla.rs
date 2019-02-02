@@ -8,12 +8,12 @@ use failure::Error;
 use serde::{Serialize};
 use bio::io::fasta;
 use debruijn::dna_string::DnaString;
-
+use itertools::Itertools;
 
 use regex::Regex;
 use std::str::FromStr;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Allele {
     gene: String,
     f1: u16,
@@ -113,36 +113,71 @@ pub fn read_hla_cds(
     let allele_parser = AlleleParser::new();
 
     info!("Starting reading the Fasta file\n");
+    let mut hlas = Vec::new();
     for result in reader.records() {
         // obtain record or fail with error
         let record = result?;
 
         // Sequence
         let dna_string = DnaString::from_acgt_bytes_hashn(record.seq(), record.id().as_bytes());
-        seqs.push(dna_string);
 
         let allele_str = record.desc().ok_or_else(|| format_err!("no HLA allele"))?;
         let allele_str = allele_str.split(" ").next().ok_or_else(||format_err!("no HLA allele"))?;
         let allele = allele_parser.parse(allele_str)?;
 
-        let tx_id = record.id();
+        let tx_id = record.id().to_string();
 
-        tx_ids.push(allele_str.to_string());
-        tx_to_allele_map.insert(tx_id.to_string(), allele);
+        let data = (allele, tx_id, allele_str.to_string(), dna_string);
+        hlas.push(data);
+    }
 
-        transcript_counter += 1;
-        if transcript_counter % 100 == 0 {
-            print!("\r Done reading {} sequences", transcript_counter);
-            io::stdout().flush().expect("Could not flush stdout");
+    hlas.sort();
+
+    let mut lengths = HashMap::new();
+
+    // All the alleles with a common 2-digit prefix must have the same length -- they can only differ by an synonymous mutation.
+    // Collate these lengths so that we can filter out non-full length sequences.
+    for (two_digit, alleles) in &hlas.iter().group_by(|v| (v.0.gene.clone(), v.0.f1, v.0.f2)) {
+
+        let mut ma: Vec<_> = alleles.collect();
+        println!("td: {:?}, alleles: {:?}", two_digit, ma.len());
+
+        // Pick the longest representative
+        ma.sort_by_key(|v| v.3.len());
+        let longest = ma.pop().unwrap();
+        let (_, _, _, dna_string) = longest;
+
+        lengths.insert(two_digit.clone(), dna_string.len());
+    }
+
+    for (three_digit, alleles) in &hlas.iter().group_by(|v| (v.0.gene.clone(), v.0.f1, v.0.f2, v.0.f3)) {
+
+        let mut ma: Vec<_> = alleles.collect();
+        //println!("td: {:?}, alleles: {:?}", three_digit, ma.len());
+        let nalleles = ma.len();
+
+        // Pick the longest representative
+        ma.sort_by_key(|v| v.3.len());
+
+        let longest = ma.pop().unwrap();
+        let (allele, tx_id, allele_str, dna_string) = longest;
+
+        // Get the length of longest 2-digit entry
+        let req_len = lengths[&(three_digit.0.clone(), three_digit.1, three_digit.2)];
+
+        let mylen = dna_string.len();
+
+        println!("td: {:?}, alleles: {:?}, max_len: {}, req_len: {}", three_digit, nalleles, mylen, req_len);
+
+        if mylen >= req_len {
+            seqs.push(dna_string.clone());
+            tx_ids.push(allele_str.to_string());
+            tx_to_allele_map.insert(tx_id.to_string(), allele.clone());
+            transcript_counter += 1;
         }
     }
 
-    println!();
-    info!(
-        "Done reading the Fasta file; Found {} sequences",
-        transcript_counter
-    );
-
+    println!( "Read {} Alleles, deduped into {} full-length 3-digit alleles", hlas.len(), transcript_counter);
     Ok((seqs, tx_ids, tx_to_allele_map))
 }
 
