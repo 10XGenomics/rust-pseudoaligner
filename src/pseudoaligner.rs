@@ -339,7 +339,7 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
             let tx = tx.clone();
             let reader = Arc::clone(&atomic_reader);
 
-            scope.spawn(move || {
+            scope.spawn(move |_| {
                 loop {
                     // If work is available, do that work.
                     match utils::get_next_record(&reader) {
@@ -416,7 +416,7 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
                 } // end-Some
             } // end-match
         } // end-for
-    }); //end crossbeam
+    }).unwrap(); //end crossbeam
 
     eprintln!();
     info!("Done Mapping Reads");

@@ -5,8 +5,8 @@ authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <pa
 
 [dependencies]
 bincode = "1.0"
-bio = "0.22"
-crossbeam = "0.4"
+bio = "0.25"
+crossbeam = "0.7"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 docopt = "1.0"
 failure = "0.1"
