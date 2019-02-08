@@ -28,7 +28,7 @@ use debruijn_mapping::{build_index::build_index,
                        pseudoaligner,
                        pseudoaligner::process_reads,
                        mappability::analyze_graph};
-use debruijn_mapping::bam;
+use debruijn_mapping::{bam, em};
                     
 
 
@@ -39,12 +39,14 @@ De-bruijn-mapping
 
 Usage:
   pseudoaligner index -i <index> <ref-fasta>
-  pseudoaligner hla-index -i <index> <ref-fasta>
+  pseudoaligner hla-index -i <index> <hla-fasta>
+  pseudoaligner comb-index -i <index> <ref-fasta> <hla-fasta>
   pseudoaligner map -i <index> <reads-fastq>
-  pseudoaligner map-bam [-o <outdir>]  -i <index> <locus> <bam>
+  pseudoaligner map-bam [-o <outdir>]  -i <index> <bam> [<locus>]
   pseudoaligner hla-map     [-o <outdir>] -i <index> <reads-fastq>
   pseudoaligner mappability [-o <outdir>] -i <index>
   pseudoaligner idxstats -i <index>
+  pseudoaligner em -i <index> -c <counts>
   pseudoaligner -h | --help | -v | --version
 
 Options:
@@ -58,13 +60,19 @@ Options:
 #[derive(Clone, Debug, Deserialize)]
 struct Args {
     arg_ref_fasta: String,
+    arg_hla_fasta: String,
     arg_index: String,
+    arg_counts: String,
     arg_bam: String,
-    arg_locus: String,
+    arg_locus: Option<String>,
     arg_reads_fastq: String,
     flag_outdir: Option<String>,
+
     cmd_index: bool,
     cmd_hla_index: bool,
+    cmd_comb_index: bool,
+
+    cmd_em: bool,
     cmd_map: bool,
     cmd_map_bam: bool,
     cmd_mappability: bool,
@@ -74,6 +82,8 @@ struct Args {
     flag_version: bool,
     flag_v: bool,
 }
+
+const HLA_PATTERN: &'static str = "^HLA-.*";
 
 fn main() -> Result<(), Error> {
     let args: Args = Docopt::new(USAGE)
@@ -98,7 +108,7 @@ fn main() -> Result<(), Error> {
     if args.cmd_index {
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
-        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta, None)?;
         let index = build_index::<config::KmerType>(
             &seqs, &tx_names, &tx_gene_map
         )?;
@@ -110,7 +120,7 @@ fn main() -> Result<(), Error> {
     } else if args.cmd_hla_index {
 
         info!("Building index from fasta");
-        let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
+        let fasta = fasta::Reader::from_file(args.arg_hla_fasta)?;
         let (seqs, tx_names, tx_allele_map) = hla::read_hla_cds(fasta)?;
 
         let tx_gene_map = HashMap::new();
@@ -123,6 +133,28 @@ fn main() -> Result<(), Error> {
         info!("Writing index to disk");
         utils::write_obj(&(index, tx_allele_map), args.arg_index)?;
         info!("Finished writing index!");
+    } else if args.cmd_comb_index {
+
+        info!("Building index from fasta");
+        let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
+
+        // Load normal txs, with HLA genes filtered out.        
+        let (mut seqs, mut tx_names, tx_gene_map) = utils::read_transcripts(fasta, Some(HLA_PATTERN))?;
+
+        info!("Building index from fasta");
+        let fasta = fasta::Reader::from_file(args.arg_hla_fasta)?;
+        let (hla_seqs, hla_tx_names, hla_tx_allele_map) = hla::read_hla_cds(fasta)?;
+        let tx_gene_map = HashMap::new();
+
+        // WIP!!
+
+        // Tack on HLA to 
+        seqs.extend(hla_seqs);
+        tx_names.extend(hla_tx_names);
+
+        let index = build_index::<config::KmerType>(
+            &seqs, &tx_names, &tx_gene_map
+        )?;
 
     } else if args.cmd_map {
         info!("Reading index from disk");
@@ -153,6 +185,25 @@ fn main() -> Result<(), Error> {
             let eqid = e.data();
             let eq = &index.eq_classes[*eqid as usize];
             println!("{}\t{}\t{}", e.node_id, e.sequence().len(), eq.len());
+        }
+    } else if args.cmd_em {
+
+
+        let index: pseudoaligner::Pseudoaligner<config::KmerType> = utils::read_obj(args.arg_index)?;
+        let mut eq_counts: bam::EqClassDb = utils::read_obj(&args.arg_counts)?;
+
+        let eqclass_counts = eq_counts.eq_class_counts();
+
+        let weights = em::em(index.tx_names.len(), &eqclass_counts);
+
+        use std::fs::File;
+        use std::io::BufWriter;
+        use std::io::Write;
+        let mut weights_file = BufWriter::new(File::create("weights.tsv")?);
+
+        for (i, w) in weights.iter().enumerate() {
+            let n = &index.tx_names[i];
+            writeln!(weights_file, "{}\t{}", n, w)?;
         }
     }
 

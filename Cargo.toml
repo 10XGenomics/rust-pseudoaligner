@@ -18,7 +18,6 @@ rayon = "1.0"
 serde = "1.0"
 regex = "1"
 rust-htslib = "*"
-smallvec = "0.6.7"
 
 [dependencies.pretty_env_logger]
 git = "https://github.com/k3yavi/pretty-env-logger"
@@ -28,6 +27,10 @@ branch = "master"
 git = "https://github.com/10XGenomics/rust-boomphf"
 branch = "master"
 features = ["serde", "fast-constructors"]
+
+[dependencies.smallvec]
+features = ["serde"]
+version = "0.6.8"
 
 [profile.release]
 debug = true

@@ -15,6 +15,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use bio::io::{fasta, fastq};
 use debruijn::dna_string::DnaString;
+use regex::Regex;
 
 use config;
 use mappability::MappabilityRecord;
@@ -58,8 +59,11 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
     }
 }
 
+
+
 pub fn read_transcripts(
     reader: fasta::Reader<File>,
+    hla_pattern: Option<&str>,
 ) -> Result<(Vec<DnaString>, Vec<String>, HashMap<String, String>), Error> {
     let mut seqs = Vec::new();
     let mut transcript_counter = 0;
@@ -67,6 +71,8 @@ pub fn read_transcripts(
     let mut tx_to_gene_map = HashMap::new();
 
     let mut fasta_format: Option<u8> = None;
+
+    let re = hla_pattern.map(|s| Regex::new(s).unwrap());
 
     info!("Starting reading the Fasta file\n");
     for result in reader.records() {
@@ -81,7 +87,13 @@ pub fn read_transcripts(
             fasta_format = detect_fasta_format(&record);
         }
 
-        let (tx_id, gene_id) = extract_tx_gene_id(&record, fasta_format)?;
+        let (tx_id, gene_id, gene_name) = extract_tx_gene_id(&record, fasta_format)?;
+
+        let remove_tx = re.as_ref().map_or(false, |regex| regex.is_match(&gene_name));
+
+        if remove_tx {
+            continue;
+        }
 
         tx_ids.push(tx_id.clone());
         tx_to_gene_map.insert(tx_id, gene_id);
@@ -115,20 +127,21 @@ pub fn detect_fasta_format(record: &fasta::Record) -> Option<u8> {
     }
 }
 
-pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: Option<u8>) -> Result<(String, String), Error>{
+pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: Option<u8>) -> Result<(String, String, String), Error>{
     match fasta_format {
         Some(config::FASTA_FORMAT_GENCODE) => {
             let id_tokens: Vec<&str> = record.id().split('|').collect();
             let tx_id = id_tokens[0].to_string();
             let gene_id = id_tokens[1].to_string();
-            Ok((tx_id, gene_id))
+            let gene_name = id_tokens[5].to_string();
+            Ok((tx_id, gene_id, gene_name))
         },
         Some(config::FASTA_FORMAT_ENSEMBL) => {
             let tx_id = record.id().to_string();
             let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
             let gene_tmp: Vec<&str> = desc_tokens[2].split(':').collect();
             let gene_id = gene_tmp[1].to_string();
-            Ok((tx_id, gene_id))
+            Ok((tx_id, gene_id, "".to_string()))
         },
         _ => Err(failure::err_msg("Unknown fasta format in extract_tx_gene_id."))
     }

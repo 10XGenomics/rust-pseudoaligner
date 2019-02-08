@@ -40,24 +40,35 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to
-    pub fn map_read_to_nodes(&self, read_seq: &DnaString) -> Option<(Vec<usize>, usize)> {
+    pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
-        let mut nodes: Vec<usize> = Vec::new();
+        
+        // We're filling out nodes
+        nodes.clear();
+
         let left_extend_threshold = (LEFT_EXTEND_FRACTION * read_length as f64) as usize;
 
         let mut kmer_pos: usize = 0;
         let kmer_length = K::k();
         let last_kmer_pos = read_length - kmer_length;
 
+        let mut kmer_lookups = 0;
+
+        {
+
         // Scan the read for the first kmer that exists in the reference
-        let find_kmer_match = |kmer_pos: &mut usize| -> Option<(usize, usize)> {
+        let mut find_kmer_match = |kmer_pos: &mut usize| -> Option<(usize, usize)> {
             while *kmer_pos <= last_kmer_pos {
                 let read_kmer = read_seq.get_kmer(*kmer_pos);
 
+                kmer_lookups += 1;
                 match self.dbg_index.get(&read_kmer) {
                     None => (),
                     Some((nid, offset)) => {
+
+                        // Verify that the kmer actually matches -- the MPHF can have false
+                        // positives.
                         let node = self.dbg.get_node(*nid as usize);
                         let ref_seq_slice = node.sequence();
                         let ref_kmer: K = ref_seq_slice.get_kmer(*offset as usize);
@@ -67,7 +78,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                         }
                     }
                 };
-                *kmer_pos += 1;
+                *kmer_pos += 3;
             }
 
             None
@@ -254,6 +265,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                 }
             } // end-loop
         } //end-if
+        }
 
         if nodes.len() == 0 {
             if read_coverage != 0 {
@@ -262,27 +274,41 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                     nodes.len(), read_coverage
                 );
             }
-            None
+            //println!("lookups: {} -- no hit", kmer_lookups);
+            None 
         } else {
-            Some((nodes, read_coverage))
+            //println!("lookups: {} -- cov: {}", kmer_lookups, read_coverage);
+            Some(read_coverage)
+        }
+    }
+
+    /// Convert a list of nodes contacted by a read into an equivalence class.
+    /// Supply node list in `nodes`. Equivalence class will be written to `eq_class`.
+    pub fn nodes_to_eq_class(&self, nodes: &Vec<usize>, eq_class: &mut Vec<u32>) {
+        eq_class.clear();
+
+        if nodes.len() == 0 {
+            return;
+        }
+
+        // Intersect the equivalence classes
+        let first_node = nodes[0];
+        let first_color = self.dbg.get_node(first_node).data();
+        eq_class.extend(&self.eq_classes[*first_color as usize]);
+
+        for node in nodes.iter().skip(1) {
+            let color = self.dbg.get_node(*node).data();
+            intersect(eq_class, &self.eq_classes[*color as usize]);
         }
     }
 
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
+        let mut nodes = Vec::new();
 
-        match self.map_read_to_nodes(read_seq) {
-            Some((mut nodes, read_coverage)) => {
-
-                // Intersect the equivalence classes
-                let first_node = nodes.pop().unwrap();
-                let first_color = self.dbg.get_node(first_node).data();
-                let mut eq_class = self.eq_classes[*first_color as usize].clone();
-
-                for node in nodes {
-                    let color = self.dbg.get_node(node).data();
-                    intersect(&mut eq_class, &self.eq_classes[*color as usize]);
-                }
-
+        match self.map_read_to_nodes(read_seq, &mut nodes) {
+            Some(read_coverage) => {
+                let mut eq_class = Vec::new();
+                self.nodes_to_eq_class(&nodes, &mut eq_class);
                 Some((eq_class, read_coverage))
             },
             None => None
@@ -292,7 +318,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
 /// Compute the intersection of v1 and v2 inplace on top of v1
 /// v1 and v2 must be sorted
-fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
+pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     if v1.is_empty() {
         return;
     }

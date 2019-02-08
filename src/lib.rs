@@ -23,9 +23,9 @@ extern crate serde;
 #[macro_use]
 extern crate log;
 
-
 pub mod bam;
 pub mod build_index;
+pub mod em;
 pub mod config;
 pub mod mappability;
 pub mod pseudoaligner;
