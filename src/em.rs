@@ -67,7 +67,7 @@ pub fn em(nitems: usize, eqclasses: &EqClassCounts) -> Vec<f64> {
 
         println!("iter: {}, div: {}, rel_diff: {}, abs_diff: {}", iters, 1.0/simpsons, max_rel_diff, max_abs_diff);
         iters += 1;
-        if (max_abs_diff < 0.0001 && max_rel_diff < 0.0005) || iters > 5000 {
+        if (max_abs_diff < 0.0001 && max_rel_diff < 0.00025) || iters > 5000 {
             break;
         }
 
