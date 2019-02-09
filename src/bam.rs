@@ -15,7 +15,7 @@ use smallvec::SmallVec;
 use crate::locus::Locus;
 
 pub struct BamSeqReader {
-    reader: Reader,
+    reader: IndexedReader,
     tmp_record: Record,
     gene_regex: Regex,
 
@@ -24,7 +24,7 @@ pub struct BamSeqReader {
 pub const HLA_FILTER: &'static str = "^HLA-.*";
 
 impl BamSeqReader  {
-    pub fn new(reader: Reader) -> BamSeqReader {
+    pub fn new(reader: IndexedReader) -> BamSeqReader {
 
         BamSeqReader {
             reader,
@@ -33,12 +33,10 @@ impl BamSeqReader  {
         }
     }
 
-    /*
     pub fn fetch(&mut self, locus: &Locus) {
         let tid = self.reader.header().tid(locus.chrom.as_bytes()).unwrap();
         self.reader.fetch(tid, locus.start, locus.end);
     }
-    */
 }
 
 
@@ -306,11 +304,11 @@ impl Iterator for BamSeqReader {
 pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_string: &Option<String>, outs: &Path) -> Result<(), Error> {
 
     use rust_htslib::bam::Read;
-    let mut rdr = Reader::from_path(bam)?;
+    let mut rdr = IndexedReader::from_path(bam)?;
     rdr.set_threads(4).unwrap();
 
     let mut itr = BamSeqReader::new(rdr);
-    /*
+    
     match locus_string {
         Some(l) => {
             let locus = Locus::from_str(l)?;
@@ -319,7 +317,7 @@ pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_stri
         },
         _ => ()
     }
-    */
+    
 
     let mut hits_file = outs.to_path_buf();
     hits_file.set_extension("counts.bin");
