@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use smallvec::SmallVec;
 
 use crate::locus::Locus;
+use crate::pseudoaligner::intersect;
 
 pub struct BamSeqReader {
     reader: IndexedReader,
@@ -125,7 +126,7 @@ pub struct EqClassDb {
 }
 
 impl<'a> EqClassDb {
-    pub fn new() -> EqClassDb {
+    pub fn new(nitems: usize) -> EqClassDb {
         EqClassDb {
             barcodes: HashMap::new(),
             umis: HashMap::new(),
@@ -192,7 +193,7 @@ impl<'a> EqClassDb {
         self.counts.sort();
     }
 
-    pub fn eq_class_counts(&mut self) -> crate::em::EqClassCounts {
+    pub fn eq_class_counts(&mut self, nitems: usize) -> crate::em::EqClassCounts {
         let mut rev_map = HashMap::<u32, &EqClass>::new();
         let mut counts: HashMap<EqClass, u32> = HashMap::new();
 
@@ -200,29 +201,39 @@ impl<'a> EqClassDb {
 
         for (cls, id) in &self.eq_classes {
             rev_map.insert(*id, cls);
-            counts.insert(cls.clone(), 0);
         }
 
         let mut uniq = 0;
         let mut total_reads = 0;
+        let mut buf = Vec::new();
         
         use itertools::Itertools;
-        for ((bc, umi), hits) in &self.counts.iter().group_by(|c| (c.barcode_id, c.umi_id)) {
+        for ((bc, umi), mut hits) in &self.counts.iter().group_by(|c| (c.barcode_id, c.umi_id)) {
             
-            let n = hits.count();
+            let c = hits.next().unwrap();
+            buf.clear();
+            buf.extend(rev_map[&c.eq_class_id]);
+            total_reads += 1;
+
+            for c in hits {
+                intersect(&mut buf, rev_map[&c.eq_class_id]);
+                total_reads += 1;
+            }
+
+            let eqclass = EqClass::from_slice(&buf);
+            let count = counts.entry(eqclass).or_default();
+            *count += 1;
+
             uniq += 1;
-            total_reads += n;
         }
 
         println!("mean umis/read: {}", (uniq as f64) / (total_reads as f64));
 
-        for c in &self.counts {
-            let eqclass = rev_map[&c.eq_class_id];
-            let v = counts.get_mut(eqclass).unwrap();
-            *v += 1;
-        }
+        let empty = EqClass::new();
+        println!("empty eq_class counts: {:?} of {}", counts.get(&empty), self.counts.len());
 
         crate::em::EqClassCounts {
+            nitems: nitems,
             counts
         }
     }
@@ -282,7 +293,7 @@ impl Iterator for BamSeqReader {
             // Get original read sequence from record.
             let mut sequence = DnaString::from_acgt_bytes_hashn(&self.tmp_record.seq().as_bytes(), self.tmp_record.qname());
 
-            if self.tmp_record.is_reverse() {
+            if !self.tmp_record.is_reverse() {
                 sequence = sequence.reverse();
             }
 
@@ -326,7 +337,7 @@ pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_stri
     let mut some_aln = 0;
     let mut long_aln = 0;
 
-    let mut eq_counts = EqClassDb::new();
+    let mut eq_counts = EqClassDb::new(align.tx_names.len());
     let mut nodes = Vec::new();
     let mut eq_class = Vec::new();
 

@@ -47,6 +47,7 @@ Usage:
   pseudoaligner mappability [-o <outdir>] -i <index>
   pseudoaligner idxstats -i <index>
   pseudoaligner em -i <index> -c <counts>
+  pseudoaligner inspect -i <index> -c <counts> <genes>...
   pseudoaligner -h | --help | -v | --version
 
 Options:
@@ -65,6 +66,7 @@ struct Args {
     arg_counts: String,
     arg_bam: String,
     arg_locus: Option<String>,
+    arg_genes: Vec<String>,
     arg_reads_fastq: String,
     flag_outdir: Option<String>,
 
@@ -77,6 +79,7 @@ struct Args {
     cmd_map_bam: bool,
     cmd_mappability: bool,
     cmd_idxstats: bool,
+    cmd_inspect: bool,
 
     // flag_long: bool,
     flag_version: bool,
@@ -192,18 +195,55 @@ fn main() -> Result<(), Error> {
         let index: pseudoaligner::Pseudoaligner<config::KmerType> = utils::read_obj(args.arg_index)?;
         let mut eq_counts: bam::EqClassDb = utils::read_obj(&args.arg_counts)?;
 
-        let eqclass_counts = eq_counts.eq_class_counts();
+        let eqclass_counts = eq_counts.eq_class_counts(index.tx_names.len());
 
-        let weights = em::em(index.tx_names.len(), &eqclass_counts);
+        let weights = em::squarem(&eqclass_counts);
 
         use std::fs::File;
         use std::io::BufWriter;
         use std::io::Write;
         let mut weights_file = BufWriter::new(File::create("weights.tsv")?);
 
-        for (i, w) in weights.iter().enumerate() {
-            let n = &index.tx_names[i];
+        let mut weight_names: Vec<(f64, &String)> = 
+            weights.
+            into_iter().
+            enumerate().
+            map(|(i,w)| (w, &index.tx_names[i])).
+            collect();
+
+        weight_names.sort_by(|(wa,_), (wb, _)| (-wa).partial_cmp(&-wb).unwrap());
+
+        for (w, n) in weight_names {
             writeln!(weights_file, "{}\t{}", n, w)?;
+        }
+
+    } else if args.cmd_inspect {
+
+        let index: pseudoaligner::Pseudoaligner<config::KmerType> = utils::read_obj(args.arg_index)?;
+        let mut eq_counts: bam::EqClassDb = utils::read_obj(&args.arg_counts)?;
+
+        let eqclass_counts = eq_counts.eq_class_counts(index.tx_names.len());
+
+        let mut name_map = HashMap::new();
+        for (i, name) in index.tx_names.iter().enumerate() {
+            name_map.insert(name, i);
+        }
+
+        println!("genes: {:?}", args.arg_genes);
+        for s in args.arg_genes {
+            let id = name_map.get(&s).expect("couldn't find gene").clone() as u32;
+
+            println!("===== {} =====", s);
+            for (class, count) in &eqclass_counts.counts {
+                if count > &10 {
+                    if class.binary_search(&id).is_ok() {
+                        for tx in class {
+                            println!("g: {}", index.tx_names[*tx as usize]);
+                        }
+                        println!("count: {}", count);
+                    }
+                }
+            }
         }
     }
 
