@@ -13,6 +13,7 @@ extern crate rayon;
 extern crate regex;
 extern crate rust_htslib;
 extern crate smallvec;
+extern crate shardio;
 
 #[macro_use]
 extern crate lazy_static;

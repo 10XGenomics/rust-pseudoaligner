@@ -9,6 +9,8 @@ use std::path::Path;
 use std::str::FromStr;
 use regex::Regex;
 use std::collections::HashMap;
+use shardio::{ShardWriter, SortKey};
+use std::borrow::Cow;
 
 use smallvec::SmallVec;
 
@@ -50,65 +52,26 @@ pub const PROC_BC_SEQ_TAG: &'static [u8]     = b"CB";
 pub const PROC_UMI_SEQ_TAG: &'static [u8]    = b"UB";
 
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct BamCrRead {
+    key: BamCrReadKey,
     sequence: DnaString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
+pub struct BamCrReadKey {
     barcode: Barcode,
     umi: Umi,
 }
 
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct  MultiVec<T> {
-    pub items: Vec<T>,
-    pub start_pos: Vec<usize>,
-    pub vec_len: Vec<u32>,
-}
-
-impl<T : Clone> MultiVec<T> {
-    pub fn new() -> MultiVec<T> {
-        MultiVec {
-            items: Vec::new(),
-            start_pos: Vec::new(),
-            vec_len: Vec::new(),
-        }
-    }
-
-    pub fn add<S: IntoIterator<Item = T>>(&mut self, items: S) {
-        let start_pos = self.items.len();
-        self.start_pos.push(start_pos);
-
-        let mut n = 0;
-        for i in items {
-            self.items.push(i);
-            n += 1;
-        }
-
-        self.vec_len.push(n);
-    }
-
-    pub fn add_slice(&mut self, items: &[T]) {
-        let start_pos = self.items.len();
-        self.start_pos.push(start_pos);
-
-        let mut n = 0;
-        for i in items {
-            self.items.push(i.clone());
-            n += 1;
-        }
-
-        self.vec_len.push(n);
-    }
-
-    pub fn len(&self) -> usize {
-        return self.start_pos.len();
-    }
-
-    pub fn get_slice(&self, sub_vec: usize) -> &[T]
-    {
-        &self.items[(self.start_pos[sub_vec])..(self.start_pos[sub_vec] + self.vec_len[sub_vec] as usize)]
+struct Key;
+impl SortKey<BamCrRead> for Key {
+    type Key = BamCrReadKey;
+    fn sort_key(item: &BamCrRead) -> Cow<BamCrReadKey> {
+        Cow::Borrowed(&item.key)
     }
 }
+
 
 #[derive(Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct BusCount {
@@ -307,7 +270,7 @@ impl Iterator for BamSeqReader {
                 None => continue,
             };
 
-            return Some(Ok(BamCrRead { sequence, barcode, umi }));
+            return Some(Ok(BamCrRead { sequence, key: BamCrReadKey { barcode, umi }}));
         }
     }
 }
@@ -333,6 +296,11 @@ pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_stri
     let mut hits_file = outs.to_path_buf();
     hits_file.set_extension("counts.bin");
 
+    let mut reads_file = outs.to_path_buf();
+    reads_file.set_extension("shards.bin");
+
+    let sw = ShardWriter::<BamCrRead, Key>::new(&reads_file, 16, 64, 1<<20);
+
     let mut rid = 0;
     let mut some_aln = 0;
     let mut long_aln = 0;
@@ -355,7 +323,7 @@ pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_stri
             if cov > 50 {
                 long_aln += 1;
 
-                eq_counts.count(&rec.barcode, &rec.umi, &EqClass::from_slice(&eq_class));
+                eq_counts.count(&rec.key.barcode, &rec.key.umi, &EqClass::from_slice(&eq_class));
 
                 /*
                 for n in &nodes {

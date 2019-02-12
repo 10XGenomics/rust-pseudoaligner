@@ -204,17 +204,44 @@ fn main() -> Result<(), Error> {
         use std::io::Write;
         let mut weights_file = BufWriter::new(File::create("weights.tsv")?);
 
-        let mut weight_names: Vec<(f64, &String)> = 
+        let mut weight_names: Vec<(f64, &String, u32)> = 
             weights.
             into_iter().
             enumerate().
-            map(|(i,w)| (w, &index.tx_names[i])).
+            map(|(i,w)| (w, &index.tx_names[i], i as u32)).
             collect();
 
-        weight_names.sort_by(|(wa,_), (wb, _)| (-wa).partial_cmp(&-wb).unwrap());
+        weight_names.sort_by(|(wa,_, _), (wb, _, _)| (-wa).partial_cmp(&-wb).unwrap());
 
-        for (w, n) in weight_names {
-            writeln!(weights_file, "{}\t{}", n, w)?;
+        for (w, name, txid) in weight_names {
+            if w > 3e-3 {
+                // Find the tx's that overlap most strongly with this tx
+                let mut tx_counts: HashMap<u32, u32> = HashMap::new();
+
+                for (class, count) in &eqclass_counts.counts {
+                    if class.binary_search(&txid).is_ok() {
+                        for tx in class {
+                            let c = tx_counts.entry(*tx).or_insert(0);
+                            *c += count;
+                        }
+                    }
+                }
+
+                let my_counts = *(tx_counts.iter().filter(|(ttx, _)| *ttx == &txid).next().unwrap().1);
+
+                let mut neighbor_counts: Vec<_> = tx_counts.into_iter().filter(|(ttx, _)| *ttx != txid).collect();
+                neighbor_counts.sort_by_key(|(_,c)| -(*c as i32));
+
+
+                println!("X: {} {}", name, my_counts);
+                for i in 0 .. std::cmp::min(12, neighbor_counts.len()) {
+                    let (neighbor_id, count) = neighbor_counts[i].clone();
+                    if (count as f64) < 0.5 * my_counts as f64 { break }
+                    println!("_: {}  {}", &index.tx_names[neighbor_id as usize], count);
+                }
+            }
+
+            writeln!(weights_file, "{}\t{}", name, w)?;
         }
 
     } else if args.cmd_inspect {

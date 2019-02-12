@@ -277,7 +277,7 @@ pub fn squarem<T: EmProblem>(p: &T) -> Vec<f64> {
         println!("iter: {}, ll2: {}, llsq: {}, alpha_tries: {}, rel_diff: {}, abs_diff: {}", iters, l2, lsq, alpha_tries, max_rel_diff, max_abs_diff);
         iters += 1;
 
-        if (max_abs_diff < 1e-4 && max_rel_diff < 1e-3) || iters > 2000 {
+        if (max_abs_diff < 5e-4 && max_rel_diff < 5e-3) || iters > 2000 {
             break;
         }
     }
@@ -336,6 +336,28 @@ mod test_em {
         EqClassCounts { counts, nitems: 4 }
     }
 
+
+    fn test2_ds() -> EqClassCounts {
+        let mut counts = HashMap::new();
+
+        let eqA = EqClass::from(vec![0]);
+        let eqAB = EqClass::from(vec![0,1]);
+
+        let eqC = EqClass::from(vec![2]);
+        let eqD = EqClass::from(vec![3]);
+
+        let eqE = EqClass::from(vec![4,5]);
+
+        counts.insert(eqA, 1);
+        counts.insert(eqAB, 19);
+        counts.insert(eqC, 10);
+        counts.insert(eqD, 10);
+        counts.insert(eqE, 20);
+        
+        EqClassCounts { counts, nitems: 6 }
+    }
+
+
     #[test]
     fn simple_inf() {
 
@@ -344,6 +366,16 @@ mod test_em {
 
         println!("{:?}", res);
     }
+
+    #[test]
+    fn med_inf() {
+
+        let eqc = test2_ds();
+        let res = em(&eqc);
+
+        println!("{:?}", res);
+    }
+
 
     #[test]
     fn accel_inf() {

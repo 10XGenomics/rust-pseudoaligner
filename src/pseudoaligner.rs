@@ -206,7 +206,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                     // compare base by base
                     if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                        if seen_snp > 3 {
+                        if seen_snp > 1 {
                             premature_break = true;
                             break;
                         }

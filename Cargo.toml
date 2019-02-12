@@ -7,7 +7,7 @@ authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <pa
 bincode = "1.0"
 bio = "0.25"
 crossbeam = "0.7"
-debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
+debruijn = { git = "https://github.com/10XGenomics/rust-debruijn", branch = "pmarks/test-mphf" }
 docopt = "1.0"
 failure = "0.1"
 flate2 = "1.0"
@@ -18,6 +18,7 @@ rayon = "1.0"
 serde = "1.0"
 regex = "1"
 rust-htslib = "*"
+shardio = { git = "https://github.com/10xGenomics/rust-shardio.git" }
 
 [dependencies.pretty_env_logger]
 git = "https://github.com/k3yavi/pretty-env-logger"
@@ -26,7 +27,8 @@ branch = "master"
 [dependencies.boomphf]
 git = "https://github.com/10XGenomics/rust-boomphf"
 branch = "master"
-features = ["serde", "fast-constructors"]
+version = "0.4"
+features = ["serde"]
 
 [dependencies.smallvec]
 features = ["serde"]
