@@ -277,7 +277,6 @@ impl Iterator for BamSeqReader {
 
 pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_string: &Option<String>, outs: &Path) -> Result<(), Error> {
 
-    use rust_htslib::bam::Read;
     let mut rdr = IndexedReader::from_path(bam)?;
     rdr.set_threads(4).unwrap();
 
@@ -318,7 +317,7 @@ pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_stri
         if let Some(cov) = aln {
             some_aln += 1;
             
-            align.nodes_to_eq_class(&nodes, &mut eq_class);
+            align.nodes_to_eq_class(&mut nodes, &mut eq_class);
 
             if cov > 50 {
                 long_aln += 1;

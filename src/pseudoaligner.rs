@@ -23,7 +23,7 @@ use utils;
 pub struct Pseudoaligner<K: Kmer> {
     pub dbg: DebruijnGraph<K, EqClassIdType>,
     pub eq_classes: Vec<Vec<u32>>,
-    dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
+    pub(crate) dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
     pub tx_names: Vec<String>,
     pub tx_gene_mapping: HashMap<String, String>,
 }
@@ -124,7 +124,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                     // compare base by base
                     if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                        if seen_snp > 3 {
+                        if seen_snp > 2 {
                             premature_break = true;
                             break;
                         }
@@ -206,7 +206,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                     // compare base by base
                     if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                        if seen_snp > 1 {
+                        if seen_snp > 2 {
                             premature_break = true;
                             break;
                         }
@@ -284,15 +284,30 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
     /// Convert a list of nodes contacted by a read into an equivalence class.
     /// Supply node list in `nodes`. Equivalence class will be written to `eq_class`.
-    pub fn nodes_to_eq_class(&self, nodes: &Vec<usize>, eq_class: &mut Vec<u32>) {
+    pub fn nodes_to_eq_class(&self, nodes: &mut Vec<usize>, eq_class: &mut Vec<u32>) {
         eq_class.clear();
 
         if nodes.len() == 0 {
             return;
         }
 
+        // Sort nodes to get the shorter equivalence class first.
+        nodes.sort_by_key(|n| {
+            let eqclass_id = self.dbg.get_node(*n).data();
+            self.eq_classes[*eqclass_id as usize].len()
+        });
+
+        let lens: Vec<_> = nodes.iter().map(|n| {
+            let eqclass_id = self.dbg.get_node(*n).data();
+            self.eq_classes[*eqclass_id as usize].len()
+        }).collect();
+        //println!("nodes: {:?}, lens: {:?}", nodes, lens);
+    
+
         // Intersect the equivalence classes
         let first_node = nodes[0];
+
+        //println!("node: {}, seq: {:?}", first_node,  self.dbg.get_node(first_node).sequence());
         let first_color = self.dbg.get_node(first_node).data();
         eq_class.extend(&self.eq_classes[*first_color as usize]);
 
@@ -308,7 +323,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         match self.map_read_to_nodes(read_seq, &mut nodes) {
             Some(read_coverage) => {
                 let mut eq_class = Vec::new();
-                self.nodes_to_eq_class(&nodes, &mut eq_class);
+                self.nodes_to_eq_class(&mut nodes, &mut eq_class);
                 Some((eq_class, read_coverage))
             },
             None => None
@@ -317,8 +332,8 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 }
 
 /// Compute the intersection of v1 and v2 inplace on top of v1
-/// v1 and v2 must be sorted
-pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
+/// v1 and v2 must be sorted and deduplicated.
+pub fn intersect_slow<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     if v1.is_empty() {
         return;
     }
@@ -346,6 +361,43 @@ pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
 
     v1.truncate(fill_idx1);
 }
+
+/// Compute the intersection of v1 and v2 inplace on top of v1
+/// v1 and v2 must be sorted and deduplicated.
+pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
+    if v1.is_empty() {
+        return;
+    }
+
+    if v2.is_empty() {
+        v1.clear();
+    }
+
+    let mut fill_idx1 = 0;
+    let mut idx1 = 0;
+    let mut idx2 = 0;
+
+    while idx1 < v1.len() && idx2 < v2.len() {
+
+        let rem_slice = &v2[idx2..];
+        match rem_slice.binary_search(&v1[idx1]) {
+            Ok(pos) => {
+                v1.swap(fill_idx1, idx1);
+                fill_idx1 += 1;
+                idx1 += 1;
+                idx2 = pos + 1;
+            },
+            Err(pos) => {
+                idx1 += 1;
+                idx2 = pos;
+            }
+        }
+    }
+    v1.truncate(fill_idx1);
+}
+
+
+
 
 pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
     reader: fastq::Reader<File>,
@@ -488,8 +540,13 @@ mod test {
         let v8 = vec![1,7,8,9,10];
         let v9 = vec![10, 15, 20];
         let v10 = vec![21, 22, 23];
+        let v11 = vec![0];
+        let v12 = vec![5];
+        let v13 = vec![100000000];
+        let v14 = vec![1,23, 45, 1000001, 100000000];
 
-        let vecs = vec![v1,v2,v3,v4,v5,v6,v7,v8,v9,v10];
+
+        let vecs = vec![v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14];
 
         for v1 in vecs.iter() {
             for v2 in vecs.iter() {

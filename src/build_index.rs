@@ -37,8 +37,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
 
     println!("Sharding sequences...");
 
-    let mut buckets: Vec<_> = seqs
-        .into_par_iter()
+    let mut buckets: Vec<_> = seqs.iter()
         .enumerate()
         .flat_map(|(id, seq)| partition_contigs::<KmerType>(seq, id as u32))
         .collect();
@@ -72,9 +71,49 @@ pub fn build_index<K: Kmer + Sync + Send>(
 
     println!("Indexing de Bruijn graph");
     let dbg_index = make_dbg_index(&dbg);
-    Ok(Pseudoaligner::new(
+
+    let al = Pseudoaligner::new(
         dbg, eq_classes, dbg_index, tx_names.clone(), tx_gene_map.clone()
-    ))
+    );
+
+    validate_dbg(seqs, &al);
+
+    Ok(al)
+}
+
+
+fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>) {
+
+    let mut eqclasses = HashMap::<K, Vec<u32>>::new();
+
+    for (i, s) in seqs.iter().enumerate() {
+        for k in s.iter_kmers::<K>() {
+            let eq = eqclasses.entry(k).or_insert(vec![]);
+            eq.push(i as u32)
+        }
+    }
+
+    for (k, mut test_eqclass) in eqclasses {
+        test_eqclass.dedup();
+
+        if test_eqclass.len() > 5000 {
+            println!("kmer: {:?}, eqclass.len(): {}", k, test_eqclass.len());
+        }
+
+        let (node_id, _) = al.dbg_index.get(&k).unwrap();
+
+        let eq_class = al.dbg.get_node(*node_id as usize).data();
+        let dbg_eqclass = &al.eq_classes[*eq_class as usize];
+
+        let mut dbg_eq_clone = dbg_eqclass.clone();
+        dbg_eq_clone.dedup();
+
+        if &dbg_eq_clone != dbg_eqclass {
+            println!("dbg eq class not unique: eqclass_id: {}, node: {}", eq_class, node_id);
+        }
+
+        assert_eq!(&test_eqclass, dbg_eqclass);
+    }
 }
 
 type PmerType = debruijn::kmer::Kmer6;

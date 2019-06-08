@@ -125,6 +125,10 @@ pub fn read_hla_cds(
         let allele_str = allele_str.split(" ").next().ok_or_else(||format_err!("no HLA allele"))?;
         let allele = allele_parser.parse(allele_str)?;
 
+        if dna_string.len() > 1600 {
+            println!("long: {}, {}", dna_string.len(), allele_str)
+        }
+
         let tx_id = record.id().to_string();
 
         let data = (allele, tx_id, allele_str.to_string(), dna_string);
@@ -140,7 +144,7 @@ pub fn read_hla_cds(
     for (two_digit, alleles) in &hlas.iter().group_by(|v| (v.0.gene.clone(), v.0.f1, v.0.f2)) {
 
         let mut ma: Vec<_> = alleles.collect();
-        println!("td: {:?}, alleles: {:?}", two_digit, ma.len());
+        println!("two digit: {:?}, num alleles: {:?}", two_digit, ma.len());
 
         // Pick the longest representative
         ma.sort_by_key(|v| v.3.len());
@@ -167,7 +171,7 @@ pub fn read_hla_cds(
 
         let mylen = dna_string.len();
 
-        println!("td: {:?}, alleles: {:?}, max_len: {}, req_len: {}", three_digit, nalleles, mylen, req_len);
+        println!("three digit: {:?}, alleles: {:?}, longest 3 digit: {}, longest 2 digit: {}", three_digit, nalleles, mylen, req_len);
 
         if mylen >= req_len {
             seqs.push(dna_string.clone());
@@ -177,7 +181,7 @@ pub fn read_hla_cds(
         }
     }
 
-    println!( "Read {} Alleles, deduped into {} full-length 3-digit alleles", hlas.len(), transcript_counter);
+    println!( "Read {} Alleles, deduped into {} full-length 2-digit alleles", hlas.len(), transcript_counter);
     Ok((seqs, tx_ids, tx_to_allele_map))
 }
 
