@@ -29,7 +29,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
     // Thread pool Configuration for calling BOOMphf
     rayon::ThreadPoolBuilder::new()
         .num_threads(MAX_WORKER)
-        .build_global()?;
+        .build()?;
 
     if seqs.len() >= U32_MAX {
         panic!("Too many ({}) sequences to handle.", seqs.len());
@@ -187,7 +187,7 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
             slice_start = i;
         }
     }
-    if slice_start > 0 {
+    if slice_start > 0 || data.len() <= min_size {
         result.push(&data[slice_start..]);
     }
     result
