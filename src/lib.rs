@@ -9,7 +9,6 @@ extern crate flate2;
 extern crate failure;
 extern crate itertools;
 extern crate rayon;
-extern crate regex;
 
 #[macro_use]
 extern crate lazy_static;
