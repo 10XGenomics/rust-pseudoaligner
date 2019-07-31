@@ -309,6 +309,8 @@ fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
             }
         }
     }
+    // Can use unreachable!() here because fill_idx1 <= v1.len()
+    v1.resize_with(fill_idx1, || { unreachable!() });
 }
 
 pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
