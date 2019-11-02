@@ -15,9 +15,11 @@ use debruijn::filter::EqClassIdType;
 use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
 use failure::Error;
+use log::info;
+use serde::{Serialize, Deserialize};
 
-use config::{MAX_WORKER, READ_COVERAGE_THRESHOLD, LEFT_EXTEND_FRACTION};
-use utils;
+use crate::config::{MAX_WORKER, READ_COVERAGE_THRESHOLD, LEFT_EXTEND_FRACTION};
+use crate::utils;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Pseudoaligner<K: Kmer> {
@@ -297,7 +299,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
             self.eq_classes[*eqclass_id as usize].len()
         });
 
-        let lens: Vec<_> = nodes.iter().map(|n| {
+        let _lens: Vec<_> = nodes.iter().map(|n| {
             let eqclass_id = self.dbg.get_node(*n).data();
             self.eq_classes[*eqclass_id as usize].len()
         }).collect();

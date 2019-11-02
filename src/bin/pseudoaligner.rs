@@ -142,11 +142,11 @@ fn main() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
 
         // Load normal txs, with HLA genes filtered out.        
-        let (mut seqs, mut tx_names, tx_gene_map) = utils::read_transcripts(fasta, Some(HLA_PATTERN))?;
+        let (mut seqs, mut tx_names, _tx_gene_map) = utils::read_transcripts(fasta, Some(HLA_PATTERN))?;
 
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_hla_fasta)?;
-        let (hla_seqs, hla_tx_names, hla_tx_allele_map) = hla::read_hla_cds(fasta)?;
+        let (hla_seqs, hla_tx_names, _hla_tx_allele_map) = hla::read_hla_cds(fasta)?;
         let tx_gene_map = HashMap::new();
 
         // WIP!!
@@ -155,7 +155,7 @@ fn main() -> Result<(), Error> {
         seqs.extend(hla_seqs);
         tx_names.extend(hla_tx_names);
 
-        let index = build_index::<config::KmerType>(
+        let _index = build_index::<config::KmerType>(
             &seqs, &tx_names, &tx_gene_map
         )?;
 

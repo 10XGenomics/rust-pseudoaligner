@@ -4,8 +4,8 @@ use debruijn::Kmer;
 use failure::Error;
 use itertools::Itertools;
 
-use config::MAPPABILITY_COUNTS_LEN;
-use pseudoaligner::Pseudoaligner;
+use crate::config::MAPPABILITY_COUNTS_LEN;
+use crate::pseudoaligner::Pseudoaligner;
 
 // 1. Given graph, build a data structure of transcripts
 //    - tx: tx_name, gene_name, 

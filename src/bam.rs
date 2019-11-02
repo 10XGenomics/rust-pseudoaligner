@@ -3,8 +3,7 @@ use rust_htslib::bam::Read;
 use rust_htslib::bam::{Record, IndexedReader};
 use failure::Error;
 use debruijn::dna_string::DnaString;
-use pseudoaligner::Pseudoaligner;
-use config::KmerType;
+
 use std::path::Path;
 use std::str::FromStr;
 use regex::Regex;
@@ -12,8 +11,12 @@ use std::collections::HashMap;
 use shardio::{ShardWriter, SortKey};
 use std::borrow::Cow;
 
+use serde::{Serialize, Deserialize};
 use smallvec::SmallVec;
+use log::debug;
 
+use crate::pseudoaligner::Pseudoaligner;
+use crate::config::KmerType;
 use crate::locus::Locus;
 use crate::pseudoaligner::intersect;
 
@@ -292,7 +295,7 @@ pub fn map_bam(bam: impl AsRef<Path>, align: Pseudoaligner<KmerType>, locus_stri
     let mut reads_file = outs.to_path_buf();
     reads_file.set_extension("shards.bin");
 
-    let sw = ShardWriter::<BamCrRead, Key>::new(&reads_file, 16, 64, 1<<20);
+    let _sw = ShardWriter::<BamCrRead, Key>::new(&reads_file, 16, 64, 1<<20);
 
     let mut rid = 0;
     let mut some_aln = 0;

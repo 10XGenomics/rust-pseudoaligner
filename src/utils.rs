@@ -16,9 +16,10 @@ use serde::{Serialize, de::DeserializeOwned};
 use bio::io::{fasta, fastq};
 use debruijn::dna_string::DnaString;
 use regex::Regex;
+use log::info;
 
-use config;
-use mappability::MappabilityRecord;
+use crate::config;
+use crate::mappability::MappabilityRecord;
 
 const MAPPABILITY_HEADER_STRING: &'static str = "tx_name\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
 
@@ -46,7 +47,7 @@ pub fn read_obj<T: DeserializeOwned, P: AsRef<Path> + Debug>(
 }
 
 /// Open a (possibly gzipped) file into a BufReader.
-fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<BufRead>, Error> {
+fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<dyn BufRead>, Error> {
     let r = File::open(p.as_ref())?;
 
     if p.as_ref().extension().unwrap() == "gz" {

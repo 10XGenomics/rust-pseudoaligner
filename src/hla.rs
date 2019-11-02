@@ -2,13 +2,14 @@
 
 //! Utility methods.
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
+use std::io::Read;
 
-use failure::Error;
-use serde::{Serialize};
+use failure::{Error, format_err};
 use bio::io::fasta;
 use debruijn::dna_string::DnaString;
 use itertools::Itertools;
+use serde::{Serialize, Deserialize};
+use log::info;
 
 use regex::Regex;
 use std::str::FromStr;
@@ -52,8 +53,8 @@ impl AlleleDb {
             return Some(self.alleles[eq_classes[0]].clone())
         }
 
-        let gene = all_same(eq_classes.iter().map(|c| &self.alleles[*c].gene));
-        let f1 = all_same(eq_classes.iter().map(|c| &self.alleles[*c].f1));
+        let _gene = all_same(eq_classes.iter().map(|c| &self.alleles[*c].gene));
+        let _f1 = all_same(eq_classes.iter().map(|c| &self.alleles[*c].f1));
 
         None
     }

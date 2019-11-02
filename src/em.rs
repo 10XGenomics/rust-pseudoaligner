@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use bam::EqClass;
+use crate::bam::EqClass;
 
 pub struct EqClassCounts {
     pub nitems: usize,
@@ -94,7 +94,7 @@ impl EmProblem for EqClassCounts {
                 continue;
             }
 
-            let mut theta_sum = 0.0;
+            let mut theta_sum: f64 = 0.0;
             for tx in class {
                 theta_sum += theta[*tx as usize];
             }
@@ -115,7 +115,7 @@ pub fn em(eqclasses: &EqClassCounts) -> Vec<f64> {
     let mut iters = 0;
 
     // Abundance required to 'care' about a relative change
-    let rel_care_thresh = 1e-3 / (nitems as f64);
+    let _rel_care_thresh = 1e-3 / (nitems as f64);
 
     loop {
 
@@ -212,7 +212,7 @@ pub fn squarem<T: EmProblem>(p: &T) -> Vec<f64> {
     let mut v = theta0.clone();
     
     let n = theta0.len();
-    let prevLL = std::f64::MIN;
+    let _prevLL = std::f64::MIN;
     let mut iters = 0; 
 
     let rel_care_thresh = Some(1e-5);
@@ -317,7 +317,7 @@ fn diffs(t1: &[f64], t2: &[f64], rel_thresh: Option<f64>) -> (f64, f64) {
 #[cfg(test)]
 mod test_em {
     use super::*;
-    use bam::EqClass;
+    use crate::bam::EqClass;
 
     fn test_ds() -> EqClassCounts {
         let mut counts = HashMap::new();

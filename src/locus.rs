@@ -2,7 +2,8 @@
 use std::str::FromStr;
 use regex::Regex;
 use std::fmt;
-use failure::Error;
+use failure::{Error, format_err};
+use serde::Deserialize;
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Debug, Deserialize, Clone)]
 pub struct Locus {

@@ -2,9 +2,10 @@
 
 use std::sync::Arc;
 use std::collections::HashMap;
+use lazy_static::lazy_static;
 
 use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap};
-use config::{KmerType, MEM_SIZE, REPORT_ALL_KMER, STRANDED};
+use crate::config::{KmerType, MEM_SIZE, REPORT_ALL_KMER, STRANDED};
 use debruijn;
 use debruijn::compression::*;
 use debruijn::dna_string::{DnaString, DnaStringSlice};
@@ -14,8 +15,8 @@ use debruijn::*;
 
 use boomphf;
 use failure::Error;
-use config::{MAX_WORKER, MIN_KMERS, U32_MAX};
-use pseudoaligner::Pseudoaligner;
+use crate::config::{MAX_WORKER, MIN_KMERS, U32_MAX};
+use crate::pseudoaligner::Pseudoaligner;
 use rayon;
 use rayon::prelude::*;
 
