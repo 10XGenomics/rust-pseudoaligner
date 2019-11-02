@@ -9,7 +9,7 @@ use std::sync::{mpsc, Arc, Mutex};
 
 use bio::io::fastq;
 use boomphf::hashmap::NoKeyBoomHashMap;
-use crossbeam;
+use crossbeam_utils::thread::scope;
 use debruijn::dna_string::DnaString;
 use debruijn::filter::EqClassIdType;
 use debruijn::graph::DebruijnGraph;
@@ -96,7 +96,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         if kmer_pos >= left_extend_threshold && node_id.is_some() {
             let mut last_pos = kmer_pos - 1;
             let mut prev_node_id = node_id.unwrap();
-            let mut prev_kmer_offset = kmer_offset.unwrap() - 1;
+            let mut prev_kmer_offset = if kmer_offset.unwrap() > 0 { kmer_offset.unwrap() - 1 } else { 0 };
 
             loop {
                 let node = self.dbg.get_node(prev_node_id);
@@ -138,7 +138,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                 }
 
                 //break the loop if end of read reached or a premature mismatch
-                if last_pos - matched_bases + 1 == 0 || premature_break {
+                if last_pos + 1 - matched_bases == 0 || premature_break {
                     break;
                 }
 
@@ -412,7 +412,7 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
 
     info!("Spawning {} threads for Mapping.\n", MAX_WORKER);
-    crossbeam::scope(|scope| {
+    scope(|scope| {
         for _ in 0..MAX_WORKER {
             let tx = tx.clone();
             let reader = Arc::clone(&atomic_reader);

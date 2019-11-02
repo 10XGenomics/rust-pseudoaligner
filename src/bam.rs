@@ -1,6 +1,6 @@
 
 use rust_htslib::bam::Read;
-use rust_htslib::bam::{Record, IndexedReader, Reader};
+use rust_htslib::bam::{Record, IndexedReader};
 use failure::Error;
 use debruijn::dna_string::DnaString;
 use pseudoaligner::Pseudoaligner;
@@ -38,7 +38,7 @@ impl BamSeqReader  {
 
     pub fn fetch(&mut self, locus: &Locus) {
         let tid = self.reader.header().tid(locus.chrom.as_bytes()).unwrap();
-        self.reader.fetch(tid, locus.start, locus.end);
+        self.reader.fetch(tid, locus.start, locus.end).unwrap();
     }
 }
 
@@ -89,7 +89,7 @@ pub struct EqClassDb {
 }
 
 impl<'a> EqClassDb {
-    pub fn new(nitems: usize) -> EqClassDb {
+    pub fn new(_nitems: usize) -> EqClassDb {
         EqClassDb {
             barcodes: HashMap::new(),
             umis: HashMap::new(),
@@ -171,7 +171,7 @@ impl<'a> EqClassDb {
         let mut buf = Vec::new();
         
         use itertools::Itertools;
-        for ((bc, umi), mut hits) in &self.counts.iter().group_by(|c| (c.barcode_id, c.umi_id)) {
+        for (_, mut hits) in &self.counts.iter().group_by(|c| (c.barcode_id, c.umi_id)) {
             
             let c = hits.next().unwrap();
             buf.clear();
@@ -212,16 +212,10 @@ impl Iterator for BamSeqReader {
             let r = self.reader.read(&mut self.tmp_record);
 
             match r {
-                Err(e) => {
-                    //println!("got err: {:?}", e);
-                    if e.is_eof() {
-                        return None
-                    } else {
-                        return Some(Err(e.into()))
-                    }
-                },
-                _ => (),
-            };
+                Ok(true) => (),
+                Ok(false) => return None,
+                Err(e) => return Some(Err(e.into())),
+            }
 
             if self.tmp_record.is_secondary() || self.tmp_record.is_supplementary() {
                 continue;

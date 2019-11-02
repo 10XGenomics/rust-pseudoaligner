@@ -3,7 +3,7 @@
 extern crate bincode;
 extern crate bio;
 extern crate boomphf;
-extern crate crossbeam;
+extern crate crossbeam_utils;
 extern crate debruijn;
 extern crate flate2;
 #[macro_use]

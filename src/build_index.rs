@@ -29,7 +29,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
     // Thread pool Configuration for calling BOOMphf
     rayon::ThreadPoolBuilder::new()
         .num_threads(MAX_WORKER)
-        .build_global()?;
+        .build()?;
 
     if seqs.len() >= U32_MAX {
         panic!("Too many ({}) sequences to handle.", seqs.len());
@@ -169,14 +169,14 @@ fn assemble_shard<K: Kmer>(
         MEM_SIZE,
     );
 
-    compress_kmers_with_hash(STRANDED, ScmapCompress::new(), &phf)
+    compress_kmers_with_hash(STRANDED, &ScmapCompress::new(), &phf)
 }
 
 fn merge_shard_dbgs<K: Kmer + Sync + Send>(
     uncompressed_dbgs: Vec<BaseGraph<K, EqClassIdType>>,
 ) -> DebruijnGraph<K, EqClassIdType> {
     let combined_graph = BaseGraph::combine(uncompressed_dbgs.into_iter()).finish();
-    compress_graph(STRANDED, ScmapCompress::new(), combined_graph, None)
+    compress_graph(STRANDED, &ScmapCompress::new(), combined_graph, None)
 }
 
 #[inline(never)]
@@ -226,7 +226,7 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
             slice_start = i;
         }
     }
-    if slice_start > 0 {
+    if slice_start > 0 || data.len() <= min_size {
         result.push(&data[slice_start..]);
     }
     result

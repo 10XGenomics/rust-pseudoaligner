@@ -1,7 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 extern crate bio;
-extern crate crossbeam;
+extern crate crossbeam_utils;
 extern crate debruijn;
 extern crate debruijn_mapping;
 extern crate docopt;

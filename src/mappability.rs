@@ -47,7 +47,7 @@ impl MappabilityRecord {
 
     pub fn total_kmer_count(&self) -> usize {
         self.tx_multiplicity
-            .into_iter()
+            .iter()
             .sum()
     }
 

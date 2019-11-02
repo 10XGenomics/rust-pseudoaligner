@@ -4,9 +4,8 @@ version = "0.2.0"
 authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
 
 [dependencies]
-bincode = "1.0"
-bio = "0.25"
-crossbeam = "0.7"
+bio = "0.22"
+crossbeam-utils = "0.6"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 docopt = "1.0"
 failure = "0.1"
@@ -15,25 +14,24 @@ itertools = "0.7"
 lazy_static = "0.2"
 log = "0.4"
 rayon = "1.0"
-serde = "1.0"
 regex = "1"
+serde = "1.0"
 rust-htslib = "*"
-shardio = { git = "https://github.com/10xGenomics/rust-shardio.git" }
+shardio = "0.5"
 pretty_assertions = "0.5.1"
+boomphf = "0.5"
+
+[dependencies.bincode]
+version = "1.0"
+features = ["i128"]
 
 [dependencies.pretty_env_logger]
 git = "https://github.com/k3yavi/pretty-env-logger"
 branch = "master"
 
-[dependencies.boomphf]
-git = "https://github.com/10XGenomics/rust-boomphf"
-branch = "master"
-version = "0.4"
-features = ["serde"]
-
 [dependencies.smallvec]
+version = "0.6"
 features = ["serde"]
-version = "0.6.8"
 
 [profile.release]
 debug = true
