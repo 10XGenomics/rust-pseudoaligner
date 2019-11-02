@@ -1,11 +1,11 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
-use std::{self, cmp::Ordering, fs::File, str};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{mpsc, Arc, Mutex};
+use std::{self, cmp::Ordering, fs::File, str};
 
 use bio::io::fastq;
 use boomphf::hashmap::NoKeyBoomHashMap;
@@ -16,9 +16,9 @@ use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
 use failure::Error;
 use log::info;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::config::{MAX_WORKER, READ_COVERAGE_THRESHOLD, LEFT_EXTEND_FRACTION};
+use crate::config::{LEFT_EXTEND_FRACTION, MAX_WORKER, READ_COVERAGE_THRESHOLD};
 use crate::utils;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -36,16 +36,22 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         eq_classes: Vec<Vec<u32>>,
         dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
         tx_names: Vec<String>,
-        tx_gene_mapping: HashMap<String, String>
+        tx_gene_mapping: HashMap<String, String>,
     ) -> Pseudoaligner<K> {
-        Pseudoaligner {dbg, eq_classes, dbg_index, tx_names, tx_gene_mapping}
+        Pseudoaligner {
+            dbg,
+            eq_classes,
+            dbg_index,
+            tx_names,
+            tx_gene_mapping,
+        }
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to
     pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
-        
+
         // We're filling out nodes
         nodes.clear();
 
@@ -58,226 +64,229 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         let mut kmer_lookups = 0;
 
         {
+            // Scan the read for the first kmer that exists in the reference
+            let mut find_kmer_match = |kmer_pos: &mut usize| -> Option<(usize, usize)> {
+                while *kmer_pos <= last_kmer_pos {
+                    let read_kmer = read_seq.get_kmer(*kmer_pos);
 
-        // Scan the read for the first kmer that exists in the reference
-        let mut find_kmer_match = |kmer_pos: &mut usize| -> Option<(usize, usize)> {
-            while *kmer_pos <= last_kmer_pos {
-                let read_kmer = read_seq.get_kmer(*kmer_pos);
+                    kmer_lookups += 1;
+                    match self.dbg_index.get(&read_kmer) {
+                        None => (),
+                        Some((nid, offset)) => {
+                            // Verify that the kmer actually matches -- the MPHF can have false
+                            // positives.
+                            let node = self.dbg.get_node(*nid as usize);
+                            let ref_seq_slice = node.sequence();
+                            let ref_kmer: K = ref_seq_slice.get_kmer(*offset as usize);
 
-                kmer_lookups += 1;
-                match self.dbg_index.get(&read_kmer) {
-                    None => (),
-                    Some((nid, offset)) => {
-
-                        // Verify that the kmer actually matches -- the MPHF can have false
-                        // positives.
-                        let node = self.dbg.get_node(*nid as usize);
-                        let ref_seq_slice = node.sequence();
-                        let ref_kmer: K = ref_seq_slice.get_kmer(*offset as usize);
-
-                        if read_kmer == ref_kmer {
-                            return Some((*nid as usize, *offset as usize));
+                            if read_kmer == ref_kmer {
+                                return Some((*nid as usize, *offset as usize));
+                            }
                         }
-                    }
-                };
-                *kmer_pos += 3;
-            }
+                    };
+                    *kmer_pos += 3;
+                }
 
-            None
-        };
+                None
+            };
 
-        // extract the first exact matching position of read
-        let (mut node_id, mut kmer_offset) =
+            // extract the first exact matching position of read
+            let (mut node_id, mut kmer_offset) =
             // get the first match through mphf
             match find_kmer_match(&mut kmer_pos) {
                 None => (None, None),
                 Some((nid, offset)) => (Some(nid), Some(offset))
             };
 
-        // check if we can extend back if there were SNP in every kmer query
-        if kmer_pos >= left_extend_threshold && node_id.is_some() {
-            let mut last_pos = kmer_pos - 1;
-            let mut prev_node_id = node_id.unwrap();
-            let mut prev_kmer_offset = if kmer_offset.unwrap() > 0 { kmer_offset.unwrap() - 1 } else { 0 };
+            // check if we can extend back if there were SNP in every kmer query
+            if kmer_pos >= left_extend_threshold && node_id.is_some() {
+                let mut last_pos = kmer_pos - 1;
+                let mut prev_node_id = node_id.unwrap();
+                let mut prev_kmer_offset = if kmer_offset.unwrap() > 0 {
+                    kmer_offset.unwrap() - 1
+                } else {
+                    0
+                };
 
-            loop {
-                let node = self.dbg.get_node(prev_node_id);
-                //println!("{:?}, {:?}, {:?}, {:?}, {:?}",
-                //         node, node.sequence(),
-                //         &eq_classes[ *node.data() as usize],
-                //         prev_kmer_offset, last_pos);
+                loop {
+                    let node = self.dbg.get_node(prev_node_id);
+                    //println!("{:?}, {:?}, {:?}, {:?}, {:?}",
+                    //         node, node.sequence(),
+                    //         &eq_classes[ *node.data() as usize],
+                    //         prev_kmer_offset, last_pos);
 
-                // length of remaining read before kmer match
-                let skipped_read = last_pos + 1;
+                    // length of remaining read before kmer match
+                    let skipped_read = last_pos + 1;
 
-                // length of the skipped node sequence before kmer match
-                let skipped_ref = prev_kmer_offset + 1;
+                    // length of the skipped node sequence before kmer match
+                    let skipped_ref = prev_kmer_offset + 1;
 
-                // find maximum extention possbile before fork or eof read
-                let max_matchable_pos = std::cmp::min(skipped_read, skipped_ref);
+                    // find maximum extention possbile before fork or eof read
+                    let max_matchable_pos = std::cmp::min(skipped_read, skipped_ref);
 
-                let ref_seq_slice = node.sequence();
-                let mut premature_break = false;
-                let mut matched_bases = 0;
-                let mut seen_snp = 0;
-                for idx in 0..max_matchable_pos {
-                    let ref_pos = prev_kmer_offset - idx;
-                    let read_offset = last_pos - idx;
+                    let ref_seq_slice = node.sequence();
+                    let mut premature_break = false;
+                    let mut matched_bases = 0;
+                    let mut seen_snp = 0;
+                    for idx in 0..max_matchable_pos {
+                        let ref_pos = prev_kmer_offset - idx;
+                        let read_offset = last_pos - idx;
 
-                    // compare base by base
-                    if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                        if seen_snp > 2 {
-                            premature_break = true;
-                            break;
+                        // compare base by base
+                        if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
+                            if seen_snp > 2 {
+                                premature_break = true;
+                                break;
+                            }
+
+                            // Allowing 2-SNP
+                            seen_snp += 1;
                         }
 
-                        // Allowing 2-SNP
-                        seen_snp += 1;
+                        matched_bases += 1;
+                        read_coverage += 1;
                     }
 
-                    matched_bases += 1;
-                    read_coverage += 1;
-                }
-
-                //break the loop if end of read reached or a premature mismatch
-                if last_pos + 1 - matched_bases == 0 || premature_break {
-                    break;
-                }
-
-                // adjust last position
-                last_pos -= matched_bases;
-
-                // If reached here then a fork is found in the reference.
-                let exts = node.exts();
-                let next_base = read_seq.get(last_pos);
-                if exts.has_ext(Dir::Left, next_base) {
-                    // found a left extention.
-                    let index = exts
-                        .get(Dir::Left)
-                        .iter()
-                        .position(|&x| x == next_base)
-                        .unwrap();
-
-                    let edge = node.l_edges()[index];
-
-                    //update the previous node's id
-                    prev_node_id = edge.0;
-                    let prev_node = self.dbg.get_node(prev_node_id);
-                    prev_kmer_offset = prev_node.sequence().len() - kmer_length;
-
-                    // extract colors
-                    nodes.push(prev_node.node_id);
-                } else {
-                    break;
-                }
-            } // end-loop
-        } //end-if
-
-        // forward search
-        if kmer_pos <= last_kmer_pos {
-            loop {
-                let node = self.dbg.get_node(node_id.unwrap());
-                //println!("{:?}, {:?}, {:?}, {:?}",
-                //         node, node.sequence(),
-                //         &eq_classes[ *node.data() as usize],
-                //         kmer_offset);
-                kmer_pos += kmer_length;
-                read_coverage += kmer_length;
-
-                // extract colors
-                nodes.push(node.node_id);
-
-                // length of remaining read after kmer match
-                let remaining_read = read_length - kmer_pos;
-
-                // length of the remaining node sequence after kmer match
-                let ref_seq_slice = node.sequence();
-                let ref_length = ref_seq_slice.len();
-                let ref_offset = kmer_offset.unwrap() + kmer_length;
-                let informative_ref = ref_length - ref_offset;
-
-                // find maximum extention possbile before fork or eof read
-                let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
-
-                let mut premature_break = false;
-                let mut matched_bases = 0;
-                let mut seen_snp = 0;
-                for idx in 0..max_matchable_pos {
-                    let ref_pos = ref_offset + idx;
-                    let read_offset = kmer_pos + idx;
-
-                    // compare base by base
-                    if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                        if seen_snp > 2 {
-                            premature_break = true;
-                            break;
-                        }
-
-                        // Allowing 2-SNP
-                        seen_snp += 1;
-                    }
-
-                    matched_bases += 1;
-                    read_coverage += 1;
-                }
-
-                kmer_pos += matched_bases;
-                //break the loop if end of read reached or a premature mismatch
-                if kmer_pos >= read_length {
-                    break;
-                }
-
-                // If reached here then a fork is found in the reference.
-                let exts = node.exts();
-                let next_base = read_seq.get(kmer_pos);
-
-                if !premature_break && exts.has_ext(Dir::Right, next_base) {
-                    // found a right extention.
-                    let index = exts
-                        .get(Dir::Right)
-                        .iter()
-                        .position(|&x| x == next_base)
-                        .unwrap();
-
-                    let edge = node.r_edges()[index];
-
-                    //update the next node's id
-                    node_id = Some(edge.0);
-                    kmer_offset = Some(0);
-
-                    //adjust for kmer_position
-                    kmer_pos -= kmer_length - 1;
-                    read_coverage -= kmer_length - 1;
-                } else {
-                    // can't extend node in dbg extract read using mphf
-                    // TODO: might have to check some cases
-                    if kmer_pos > last_kmer_pos {
-                        // can't search in mphf if no full kmer can be made
+                    //break the loop if end of read reached or a premature mismatch
+                    if last_pos + 1 - matched_bases == 0 || premature_break {
                         break;
                     }
 
-                    // get the match through mphf
-                    match find_kmer_match(&mut kmer_pos) {
-                        None => break,
-                        Some((nid, offset)) => {
-                            node_id = Some(nid);
-                            kmer_offset = Some(offset);
+                    // adjust last position
+                    last_pos -= matched_bases;
+
+                    // If reached here then a fork is found in the reference.
+                    let exts = node.exts();
+                    let next_base = read_seq.get(last_pos);
+                    if exts.has_ext(Dir::Left, next_base) {
+                        // found a left extention.
+                        let index = exts
+                            .get(Dir::Left)
+                            .iter()
+                            .position(|&x| x == next_base)
+                            .unwrap();
+
+                        let edge = node.l_edges()[index];
+
+                        //update the previous node's id
+                        prev_node_id = edge.0;
+                        let prev_node = self.dbg.get_node(prev_node_id);
+                        prev_kmer_offset = prev_node.sequence().len() - kmer_length;
+
+                        // extract colors
+                        nodes.push(prev_node.node_id);
+                    } else {
+                        break;
+                    }
+                } // end-loop
+            } //end-if
+
+            // forward search
+            if kmer_pos <= last_kmer_pos {
+                loop {
+                    let node = self.dbg.get_node(node_id.unwrap());
+                    //println!("{:?}, {:?}, {:?}, {:?}",
+                    //         node, node.sequence(),
+                    //         &eq_classes[ *node.data() as usize],
+                    //         kmer_offset);
+                    kmer_pos += kmer_length;
+                    read_coverage += kmer_length;
+
+                    // extract colors
+                    nodes.push(node.node_id);
+
+                    // length of remaining read after kmer match
+                    let remaining_read = read_length - kmer_pos;
+
+                    // length of the remaining node sequence after kmer match
+                    let ref_seq_slice = node.sequence();
+                    let ref_length = ref_seq_slice.len();
+                    let ref_offset = kmer_offset.unwrap() + kmer_length;
+                    let informative_ref = ref_length - ref_offset;
+
+                    // find maximum extention possbile before fork or eof read
+                    let max_matchable_pos = std::cmp::min(remaining_read, informative_ref);
+
+                    let mut premature_break = false;
+                    let mut matched_bases = 0;
+                    let mut seen_snp = 0;
+                    for idx in 0..max_matchable_pos {
+                        let ref_pos = ref_offset + idx;
+                        let read_offset = kmer_pos + idx;
+
+                        // compare base by base
+                        if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
+                            if seen_snp > 2 {
+                                premature_break = true;
+                                break;
+                            }
+
+                            // Allowing 2-SNP
+                            seen_snp += 1;
                         }
-                    };
-                }
-            } // end-loop
-        } //end-if
+
+                        matched_bases += 1;
+                        read_coverage += 1;
+                    }
+
+                    kmer_pos += matched_bases;
+                    //break the loop if end of read reached or a premature mismatch
+                    if kmer_pos >= read_length {
+                        break;
+                    }
+
+                    // If reached here then a fork is found in the reference.
+                    let exts = node.exts();
+                    let next_base = read_seq.get(kmer_pos);
+
+                    if !premature_break && exts.has_ext(Dir::Right, next_base) {
+                        // found a right extention.
+                        let index = exts
+                            .get(Dir::Right)
+                            .iter()
+                            .position(|&x| x == next_base)
+                            .unwrap();
+
+                        let edge = node.r_edges()[index];
+
+                        //update the next node's id
+                        node_id = Some(edge.0);
+                        kmer_offset = Some(0);
+
+                        //adjust for kmer_position
+                        kmer_pos -= kmer_length - 1;
+                        read_coverage -= kmer_length - 1;
+                    } else {
+                        // can't extend node in dbg extract read using mphf
+                        // TODO: might have to check some cases
+                        if kmer_pos > last_kmer_pos {
+                            // can't search in mphf if no full kmer can be made
+                            break;
+                        }
+
+                        // get the match through mphf
+                        match find_kmer_match(&mut kmer_pos) {
+                            None => break,
+                            Some((nid, offset)) => {
+                                node_id = Some(nid);
+                                kmer_offset = Some(offset);
+                            }
+                        };
+                    }
+                } // end-loop
+            } //end-if
         }
 
         if nodes.len() == 0 {
             if read_coverage != 0 {
                 panic!(
                     "Different read coverage {:?} than num of eqclasses {:?}",
-                    nodes.len(), read_coverage
+                    nodes.len(),
+                    read_coverage
                 );
             }
             //println!("lookups: {} -- no hit", kmer_lookups);
-            None 
+            None
         } else {
             //println!("lookups: {} -- cov: {}", kmer_lookups, read_coverage);
             Some(read_coverage)
@@ -299,12 +308,14 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
             self.eq_classes[*eqclass_id as usize].len()
         });
 
-        let _lens: Vec<_> = nodes.iter().map(|n| {
-            let eqclass_id = self.dbg.get_node(*n).data();
-            self.eq_classes[*eqclass_id as usize].len()
-        }).collect();
+        let _lens: Vec<_> = nodes
+            .iter()
+            .map(|n| {
+                let eqclass_id = self.dbg.get_node(*n).data();
+                self.eq_classes[*eqclass_id as usize].len()
+            })
+            .collect();
         //println!("nodes: {:?}, lens: {:?}", nodes, lens);
-    
 
         // Intersect the equivalence classes
         let first_node = nodes[0];
@@ -327,8 +338,8 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                 let mut eq_class = Vec::new();
                 self.nodes_to_eq_class(&mut nodes, &mut eq_class);
                 Some((eq_class, read_coverage))
-            },
-            None => None
+            }
+            None => None,
         }
     }
 }
@@ -380,7 +391,6 @@ pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     let mut idx2 = 0;
 
     while idx1 < v1.len() && idx2 < v2.len() {
-
         let rem_slice = &v2[idx2..];
         match rem_slice.binary_search(&v1[idx1]) {
             Ok(pos) => {
@@ -388,7 +398,7 @@ pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
                 fill_idx1 += 1;
                 idx1 += 1;
                 idx2 = pos + 1;
-            },
+            }
             Err(pos) => {
                 idx1 += 1;
                 idx2 = pos;
@@ -397,9 +407,6 @@ pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     }
     v1.truncate(fill_idx1);
 }
-
-
-
 
 pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
     reader: fastq::Reader<File>,
@@ -496,7 +503,8 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
                 } // end-Some
             } // end-match
         } // end-for
-    }).unwrap(); //end crossbeam
+    })
+    .unwrap(); //end crossbeam
 
     eprintln!();
     info!("Done Mapping Reads");
@@ -507,12 +515,10 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
 mod test {
     use super::*;
     use std::collections::HashSet;
-    use std::iter::FromIterator;
     use std::hash::Hash;
-
+    use std::iter::FromIterator;
 
     fn test_intersect<T: Hash + Eq + Clone + Ord + Debug>(v1: &Vec<T>, v2: &Vec<T>) {
-
         let mut c1 = v1.clone();
         let c2 = v2.clone();
 
@@ -522,7 +528,6 @@ mod test {
 
         let mut int1: Vec<T> = intersection.cloned().collect();
         int1.sort();
-        
 
         intersect(&mut c1, &c2);
 
@@ -531,24 +536,22 @@ mod test {
 
     #[test]
     fn intersect_test() {
-
-        let v1 = vec![1,2,3,4,5,6,7,8,9];
-        let v2 = vec![1,2,3];
-        let v3 = vec![1,4,5];
-        let v4 = vec![7,8,9];
+        let v1 = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let v2 = vec![1, 2, 3];
+        let v3 = vec![1, 4, 5];
+        let v4 = vec![7, 8, 9];
         let v5 = vec![9];
         let v6: Vec<usize> = vec![];
-        let v7 = vec![1,2,3,6,7,8,9];
-        let v8 = vec![1,7,8,9,10];
+        let v7 = vec![1, 2, 3, 6, 7, 8, 9];
+        let v8 = vec![1, 7, 8, 9, 10];
         let v9 = vec![10, 15, 20];
         let v10 = vec![21, 22, 23];
         let v11 = vec![0];
         let v12 = vec![5];
         let v13 = vec![100000000];
-        let v14 = vec![1,23, 45, 1000001, 100000000];
+        let v14 = vec![1, 23, 45, 1000001, 100000000];
 
-
-        let vecs = vec![v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14];
+        let vecs = vec![v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14];
 
         for v1 in vecs.iter() {
             for v2 in vecs.iter() {

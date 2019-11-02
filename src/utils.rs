@@ -3,25 +3,26 @@
 //! Utility methods.
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fs::{File};
-use std::io::{self, Write, BufRead, BufReader, BufWriter};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use bincode::{self, deserialize_from, serialize_into};
 use failure::{self, Error};
 use flate2::read::MultiGzDecoder;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 
 use bio::io::{fasta, fastq};
 use debruijn::dna_string::DnaString;
-use regex::Regex;
 use log::info;
+use regex::Regex;
 
 use crate::config;
 use crate::mappability::MappabilityRecord;
 
-const MAPPABILITY_HEADER_STRING: &'static str = "tx_name\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
+const MAPPABILITY_HEADER_STRING: &'static str =
+    "tx_name\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
 
 pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(
     g: &T,
@@ -60,8 +61,6 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<dyn BufRead>, Error> {
     }
 }
 
-
-
 pub fn read_transcripts(
     reader: fasta::Reader<File>,
     hla_pattern: Option<&str>,
@@ -90,7 +89,9 @@ pub fn read_transcripts(
 
         let (tx_id, gene_id, gene_name) = extract_tx_gene_id(&record, fasta_format)?;
 
-        let remove_tx = re.as_ref().map_or(false, |regex| regex.is_match(&gene_name));
+        let remove_tx = re
+            .as_ref()
+            .map_or(false, |regex| regex.is_match(&gene_name));
 
         if remove_tx {
             continue;
@@ -118,7 +119,7 @@ pub fn read_transcripts(
 pub fn detect_fasta_format(record: &fasta::Record) -> Option<u8> {
     let id_tokens: Vec<&str> = record.id().split('|').collect();
     if id_tokens.len() == 9 {
-        return Some(config::FASTA_FORMAT_GENCODE)
+        return Some(config::FASTA_FORMAT_GENCODE);
     }
     let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
     if desc_tokens.len() == 5 {
@@ -128,7 +129,10 @@ pub fn detect_fasta_format(record: &fasta::Record) -> Option<u8> {
     }
 }
 
-pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: Option<u8>) -> Result<(String, String, String), Error>{
+pub fn extract_tx_gene_id(
+    record: &fasta::Record,
+    fasta_format: Option<u8>,
+) -> Result<(String, String, String), Error> {
     match fasta_format {
         Some(config::FASTA_FORMAT_GENCODE) => {
             let id_tokens: Vec<&str> = record.id().split('|').collect();
@@ -136,15 +140,17 @@ pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: Option<u8>) -> R
             let gene_id = id_tokens[1].to_string();
             let gene_name = id_tokens[5].to_string();
             Ok((tx_id, gene_id, gene_name))
-        },
+        }
         Some(config::FASTA_FORMAT_ENSEMBL) => {
             let tx_id = record.id().to_string();
             let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
             let gene_tmp: Vec<&str> = desc_tokens[2].split(':').collect();
             let gene_id = gene_tmp[1].to_string();
             Ok((tx_id, gene_id, "".to_string()))
-        },
-        _ => Err(failure::err_msg("Unknown fasta format in extract_tx_gene_id."))
+        }
+        _ => Err(failure::err_msg(
+            "Unknown fasta format in extract_tx_gene_id.",
+        )),
     }
 }
 
@@ -155,9 +161,7 @@ pub fn get_next_record<R: io::Read>(
     lock.next()
 }
 
-pub fn open_file<P: AsRef<Path>>(
-    filename: &str, outdir: P
-) -> Result<File, Error> {
+pub fn open_file<P: AsRef<Path>>(filename: &str, outdir: P) -> Result<File, Error> {
     let out_fn = outdir.as_ref().join(filename);
     let outfile = File::create(&out_fn)?;
     Ok(outfile)
@@ -165,22 +169,21 @@ pub fn open_file<P: AsRef<Path>>(
 
 pub fn write_mappability_tsv<P: AsRef<Path>>(
     records: Vec<MappabilityRecord>,
-    outdir: P
+    outdir: P,
 ) -> Result<(), Error> {
-
     let mut outfile = open_file("tx_mappability.tsv", outdir)?;
 
     outfile.write_all(MAPPABILITY_HEADER_STRING.as_bytes())?;
 
     for record in records {
-        write!(outfile,
-               "{}\t{}\t{}\t{}\t{}\n",
-               record.tx_name,
-               record.gene_name,
-               record.total_kmer_count(),
-               record.fraction_unique_tx(),
-               record.fraction_unique_gene()
-
+        write!(
+            outfile,
+            "{}\t{}\t{}\t{}\t{}\n",
+            record.tx_name,
+            record.gene_name,
+            record.total_kmer_count(),
+            record.fraction_unique_tx(),
+            record.fraction_unique_gene()
         )?;
     }
 

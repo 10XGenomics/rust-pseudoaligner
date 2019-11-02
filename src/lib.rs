@@ -2,11 +2,10 @@
 
 pub mod bam;
 pub mod build_index;
-pub mod em;
 pub mod config;
+pub mod em;
+pub mod hla;
+mod locus;
 pub mod mappability;
 pub mod pseudoaligner;
-pub mod hla;
 pub mod utils;
-mod locus;
-

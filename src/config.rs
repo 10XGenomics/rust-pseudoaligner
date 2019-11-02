@@ -23,4 +23,3 @@ pub type KmerType = kmer::Kmer20;
 
 // Transcriptome mappability
 pub const MAPPABILITY_COUNTS_LEN: usize = 11;
-

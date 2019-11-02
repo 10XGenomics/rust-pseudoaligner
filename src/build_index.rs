@@ -1,11 +1,11 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
-use std::sync::Arc;
-use std::collections::HashMap;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap};
 use crate::config::{KmerType, MEM_SIZE, REPORT_ALL_KMER, STRANDED};
+use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap};
 use debruijn;
 use debruijn::compression::*;
 use debruijn::dna_string::{DnaString, DnaStringSlice};
@@ -13,10 +13,10 @@ use debruijn::filter::*;
 use debruijn::graph::*;
 use debruijn::*;
 
-use boomphf;
-use failure::Error;
 use crate::config::{MAX_WORKER, MIN_KMERS, U32_MAX};
 use crate::pseudoaligner::Pseudoaligner;
+use boomphf;
+use failure::Error;
 use rayon;
 use rayon::prelude::*;
 
@@ -25,7 +25,7 @@ const MIN_SHARD_SEQUENCES: usize = 2000;
 pub fn build_index<K: Kmer + Sync + Send>(
     seqs: &[DnaString],
     tx_names: &Vec<String>,
-    tx_gene_map: &HashMap<String, String>
+    tx_gene_map: &HashMap<String, String>,
 ) -> Result<Pseudoaligner<K>, Error> {
     // Thread pool Configuration for calling BOOMphf
     rayon::ThreadPoolBuilder::new()
@@ -38,7 +38,8 @@ pub fn build_index<K: Kmer + Sync + Send>(
 
     println!("Sharding sequences...");
 
-    let mut buckets: Vec<_> = seqs.iter()
+    let mut buckets: Vec<_> = seqs
+        .iter()
         .enumerate()
         .flat_map(|(id, seq)| partition_contigs::<KmerType>(seq, id as u32))
         .collect();
@@ -57,7 +58,8 @@ pub fn build_index<K: Kmer + Sync + Send>(
         .into_par_iter()
         .map_with(summarizer.clone(), |s, strings| {
             assemble_shard::<K>(strings, s)
-        }).collect_into_vec(&mut shard_dbgs);
+        })
+        .collect_into_vec(&mut shard_dbgs);
 
     println!();
     println!("Done separate de Bruijn graph construction");
@@ -74,7 +76,11 @@ pub fn build_index<K: Kmer + Sync + Send>(
     let dbg_index = make_dbg_index(&dbg);
 
     let al = Pseudoaligner::new(
-        dbg, eq_classes, dbg_index, tx_names.clone(), tx_gene_map.clone()
+        dbg,
+        eq_classes,
+        dbg_index,
+        tx_names.clone(),
+        tx_gene_map.clone(),
     );
 
     validate_dbg(seqs, &al);
@@ -82,9 +88,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
     Ok(al)
 }
 
-
 fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>) {
-
     let mut eqclasses = HashMap::<K, Vec<u32>>::new();
 
     for (i, s) in seqs.iter().enumerate() {
@@ -110,7 +114,10 @@ fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>
         dbg_eq_clone.dedup();
 
         if &dbg_eq_clone != dbg_eqclass {
-            println!("dbg eq class not unique: eqclass_id: {}, node: {}", eq_class, node_id);
+            println!(
+                "dbg eq class not unique: eqclass_id: {}, node: {}",
+                eq_class, node_id
+            );
         }
 
         assert_eq!(&test_eqclass, dbg_eqclass);
@@ -192,7 +199,8 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
 
     println!("Total {:?} kmers to process in dbg", total_kmers);
     println!("Making mphf of kmers");
-    let mphf = boomphf::Mphf::from_chunked_iterator_parallel(1.7, dbg, None, total_kmers, MAX_WORKER);
+    let mphf =
+        boomphf::Mphf::from_chunked_iterator_parallel(1.7, dbg, None, total_kmers, MAX_WORKER);
 
     println!("Assigning offsets to kmers");
     let mut node_and_offsets = Vec::with_capacity(total_kmers);

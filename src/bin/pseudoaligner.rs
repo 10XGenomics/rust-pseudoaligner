@@ -16,21 +16,19 @@ extern crate log;
 extern crate serde;
 
 // Import some modules
-use std::collections::HashMap;
 use bio::io::{fasta, fastq};
 use docopt::Docopt;
 use failure::Error;
+use std::collections::HashMap;
 use std::{env, fs};
 use std::{path::PathBuf, str};
 
-use debruijn_mapping::{config, utils, hla};
-use debruijn_mapping::{build_index::build_index,
-                       pseudoaligner,
-                       pseudoaligner::process_reads,
-                       mappability::analyze_graph};
 use debruijn_mapping::{bam, em};
-                    
-
+use debruijn_mapping::{
+    build_index::build_index, mappability::analyze_graph, pseudoaligner,
+    pseudoaligner::process_reads,
+};
+use debruijn_mapping::{config, hla, utils};
 
 const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
 const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -55,8 +53,7 @@ Options:
   -h --help         Show this screen.
   -v --version         Show version.
 ";
-  // -l --long         Long output format (one line per read-transcript mapping)
-
+// -l --long         Long output format (one line per read-transcript mapping)
 
 #[derive(Clone, Debug, Deserialize)]
 struct Args {
@@ -90,11 +87,11 @@ const HLA_PATTERN: &'static str = "^HLA-.*";
 
 fn main() -> Result<(), Error> {
     let args: Args = Docopt::new(USAGE)
-                            .and_then(|d| d.deserialize())
-                            .unwrap_or_else(|e| e.exit());
+        .and_then(|d| d.deserialize())
+        .unwrap_or_else(|e| e.exit());
 
     if args.flag_version || args.flag_v {
-        println!{"{} {}", PKG_NAME, PKG_VERSION};
+        println! {"{} {}", PKG_NAME, PKG_VERSION};
         return Ok(());
     }
 
@@ -112,37 +109,32 @@ fn main() -> Result<(), Error> {
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta, None)?;
-        let index = build_index::<config::KmerType>(
-            &seqs, &tx_names, &tx_gene_map
-        )?;
+        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
         info!("Finished building index!");
 
         info!("Writing index to disk");
         utils::write_obj(&index, args.arg_index)?;
         info!("Finished writing index!");
     } else if args.cmd_hla_index {
-
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_hla_fasta)?;
         let (seqs, tx_names, tx_allele_map) = hla::read_hla_cds(fasta)?;
 
         let tx_gene_map = HashMap::new();
 
-        let index = build_index::<config::KmerType>(
-            &seqs, &tx_names, &tx_gene_map
-        )?;
+        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
         info!("Finished building index!");
 
         info!("Writing index to disk");
         utils::write_obj(&(index, tx_allele_map), args.arg_index)?;
         info!("Finished writing index!");
     } else if args.cmd_comb_index {
-
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
 
-        // Load normal txs, with HLA genes filtered out.        
-        let (mut seqs, mut tx_names, _tx_gene_map) = utils::read_transcripts(fasta, Some(HLA_PATTERN))?;
+        // Load normal txs, with HLA genes filtered out.
+        let (mut seqs, mut tx_names, _tx_gene_map) =
+            utils::read_transcripts(fasta, Some(HLA_PATTERN))?;
 
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_hla_fasta)?;
@@ -151,14 +143,11 @@ fn main() -> Result<(), Error> {
 
         // WIP!!
 
-        // Tack on HLA to 
+        // Tack on HLA to
         seqs.extend(hla_seqs);
         tx_names.extend(hla_tx_names);
 
-        let _index = build_index::<config::KmerType>(
-            &seqs, &tx_names, &tx_gene_map
-        )?;
-
+        let _index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
     } else if args.cmd_map {
         info!("Reading index from disk");
         let index = utils::read_obj(args.arg_index)?;
@@ -179,8 +168,8 @@ fn main() -> Result<(), Error> {
         info!("{} transcripts total", records.len());
         utils::write_mappability_tsv(records, outdir)?;
     } else if args.cmd_idxstats {
-
-        let index: pseudoaligner::Pseudoaligner<config::KmerType> = utils::read_obj(args.arg_index)?;
+        let index: pseudoaligner::Pseudoaligner<config::KmerType> =
+            utils::read_obj(args.arg_index)?;
 
         use debruijn::Mer;
 
@@ -190,9 +179,8 @@ fn main() -> Result<(), Error> {
             println!("{}\t{}\t{}", e.node_id, e.sequence().len(), eq.len());
         }
     } else if args.cmd_em {
-
-
-        let index: pseudoaligner::Pseudoaligner<config::KmerType> = utils::read_obj(args.arg_index)?;
+        let index: pseudoaligner::Pseudoaligner<config::KmerType> =
+            utils::read_obj(args.arg_index)?;
         let mut eq_counts: bam::EqClassDb = utils::read_obj(&args.arg_counts)?;
 
         let eqclass_counts = eq_counts.eq_class_counts(index.tx_names.len());
@@ -204,14 +192,13 @@ fn main() -> Result<(), Error> {
         use std::io::Write;
         let mut weights_file = BufWriter::new(File::create("weights.tsv")?);
 
-        let mut weight_names: Vec<(f64, &String, u32)> = 
-            weights.
-            into_iter().
-            enumerate().
-            map(|(i,w)| (w, &index.tx_names[i], i as u32)).
-            collect();
+        let mut weight_names: Vec<(f64, &String, u32)> = weights
+            .into_iter()
+            .enumerate()
+            .map(|(i, w)| (w, &index.tx_names[i], i as u32))
+            .collect();
 
-        weight_names.sort_by(|(wa,_, _), (wb, _, _)| (-wa).partial_cmp(&-wb).unwrap());
+        weight_names.sort_by(|(wa, _, _), (wb, _, _)| (-wa).partial_cmp(&-wb).unwrap());
 
         for (w, name, txid) in weight_names {
             if w > 3e-3 {
@@ -227,26 +214,34 @@ fn main() -> Result<(), Error> {
                     }
                 }
 
-                let my_counts = *(tx_counts.iter().filter(|(ttx, _)| *ttx == &txid).next().unwrap().1);
+                let my_counts = *(tx_counts
+                    .iter()
+                    .filter(|(ttx, _)| *ttx == &txid)
+                    .next()
+                    .unwrap()
+                    .1);
 
-                let mut neighbor_counts: Vec<_> = tx_counts.into_iter().filter(|(ttx, _)| *ttx != txid).collect();
-                neighbor_counts.sort_by_key(|(_,c)| -(*c as i32));
-
+                let mut neighbor_counts: Vec<_> = tx_counts
+                    .into_iter()
+                    .filter(|(ttx, _)| *ttx != txid)
+                    .collect();
+                neighbor_counts.sort_by_key(|(_, c)| -(*c as i32));
 
                 println!("X: {} {}", name, my_counts);
-                for i in 0 .. std::cmp::min(12, neighbor_counts.len()) {
+                for i in 0..std::cmp::min(12, neighbor_counts.len()) {
                     let (neighbor_id, count) = neighbor_counts[i].clone();
-                    if (count as f64) < 0.5 * my_counts as f64 { break }
+                    if (count as f64) < 0.5 * my_counts as f64 {
+                        break;
+                    }
                     println!("_: {}  {}", &index.tx_names[neighbor_id as usize], count);
                 }
             }
 
             writeln!(weights_file, "{}\t{}", name, w)?;
         }
-
     } else if args.cmd_inspect {
-
-        let index: pseudoaligner::Pseudoaligner<config::KmerType> = utils::read_obj(args.arg_index)?;
+        let index: pseudoaligner::Pseudoaligner<config::KmerType> =
+            utils::read_obj(args.arg_index)?;
         let mut eq_counts: bam::EqClassDb = utils::read_obj(&args.arg_counts)?;
 
         let eqclass_counts = eq_counts.eq_class_counts(index.tx_names.len());
@@ -278,9 +273,7 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-
 fn map_bam(args: &Args) -> Result<(), Error> {
-
     info!("Reading index from disk");
     let index = utils::read_obj(&args.arg_index)?;
     info!("Finished reading index!");

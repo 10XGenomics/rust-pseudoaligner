@@ -4,12 +4,12 @@
 use std::collections::HashMap;
 use std::io::Read;
 
-use failure::{Error, format_err};
 use bio::io::fasta;
 use debruijn::dna_string::DnaString;
+use failure::{format_err, Error};
 use itertools::Itertools;
-use serde::{Serialize, Deserialize};
 use log::info;
+use serde::{Deserialize, Serialize};
 
 use regex::Regex;
 use std::str::FromStr;
@@ -27,7 +27,7 @@ pub struct AlleleDb {
     alleles: Vec<Allele>,
 }
 
-pub fn all_same<T: Eq>(mut items: impl Iterator<Item=T>) -> Option<T> {
+pub fn all_same<T: Eq>(mut items: impl Iterator<Item = T>) -> Option<T> {
     let first_item = items.next();
     loop {
         let next_item = items.next();
@@ -36,21 +36,20 @@ pub fn all_same<T: Eq>(mut items: impl Iterator<Item=T>) -> Option<T> {
         }
 
         if next_item != first_item {
-            return None
+            return None;
         }
     }
 }
 
 impl AlleleDb {
     pub fn lowest_common_allele(&self, eq_classes: &[usize]) -> Option<Allele> {
-
         if eq_classes.len() == 0 {
-            return None
+            return None;
         }
 
         // Unique allele hit.
         if eq_classes.len() == 1 {
-            return Some(self.alleles[eq_classes[0]].clone())
+            return Some(self.alleles[eq_classes[0]].clone());
         }
 
         let _gene = all_same(eq_classes.iter().map(|c| &self.alleles[*c].gene));
@@ -69,20 +68,29 @@ impl AlleleParser {
     fn new() -> AlleleParser {
         let valid_regex = Regex::new("^[A-Z0-9]+[*][0-9]+(:[0-9]+)*[A-Z]?$").unwrap();
         let field_regex = Regex::new("[0-9]+(:[0-9]+)*").unwrap();
-        AlleleParser { valid_regex, field_regex }
+        AlleleParser {
+            valid_regex,
+            field_regex,
+        }
     }
 
     fn parse(&self, s: &str) -> Result<Allele, Error> {
-        
         if !self.valid_regex.is_match(s) {
             return Err(format_err!("invalid allele string: {}", s));
         }
 
         let mut star_split = s.split("*");
-        let gene = star_split.next().ok_or_else(|| format_err!("no split: {}", s))?;
-        let suffix = star_split.next().ok_or_else(|| format_err!("invalid allele no star separator: {}", s))?;
+        let gene = star_split
+            .next()
+            .ok_or_else(|| format_err!("no split: {}", s))?;
+        let suffix = star_split
+            .next()
+            .ok_or_else(|| format_err!("invalid allele no star separator: {}", s))?;
 
-        let flds = self.field_regex.find(suffix).ok_or_else(|| format_err!("no alleles found {}", s))?;
+        let flds = self
+            .field_regex
+            .find(suffix)
+            .ok_or_else(|| format_err!("no alleles found {}", s))?;
 
         let fld_str = flds.as_str();
         let mut flds = fld_str.split(":");
@@ -90,14 +98,16 @@ impl AlleleParser {
         let f2 = flds.next().map(|f| u16::from_str(f).unwrap());
         let f3 = flds.next().map(|f| u16::from_str(f).unwrap());
         let f4 = flds.next().map(|f| u16::from_str(f).unwrap());
-        
+
         Ok(Allele {
             gene: gene.to_string(),
-            f1, f2, f3, f4
+            f1,
+            f2,
+            f3,
+            f4,
         })
     }
 }
-
 
 // Parse headers of the form:
 // >HLA:HLA01534 A*02:53N 1098 bp
@@ -123,7 +133,10 @@ pub fn read_hla_cds(
         let dna_string = DnaString::from_acgt_bytes_hashn(record.seq(), record.id().as_bytes());
 
         let allele_str = record.desc().ok_or_else(|| format_err!("no HLA allele"))?;
-        let allele_str = allele_str.split(" ").next().ok_or_else(||format_err!("no HLA allele"))?;
+        let allele_str = allele_str
+            .split(" ")
+            .next()
+            .ok_or_else(|| format_err!("no HLA allele"))?;
         let allele = allele_parser.parse(allele_str)?;
 
         if dna_string.len() > 1600 {
@@ -143,7 +156,6 @@ pub fn read_hla_cds(
     // All the alleles with a common 2-digit prefix must have the same length -- they can only differ by an synonymous mutation.
     // Collate these lengths so that we can filter out non-full length sequences.
     for (two_digit, alleles) in &hlas.iter().group_by(|v| (v.0.gene.clone(), v.0.f1, v.0.f2)) {
-
         let mut ma: Vec<_> = alleles.collect();
         println!("two digit: {:?}, num alleles: {:?}", two_digit, ma.len());
 
@@ -155,8 +167,10 @@ pub fn read_hla_cds(
         lengths.insert(two_digit.clone(), dna_string.len());
     }
 
-    for (three_digit, alleles) in &hlas.iter().group_by(|v| (v.0.gene.clone(), v.0.f1, v.0.f2, v.0.f3)) {
-
+    for (three_digit, alleles) in &hlas
+        .iter()
+        .group_by(|v| (v.0.gene.clone(), v.0.f1, v.0.f2, v.0.f3))
+    {
         let mut ma: Vec<_> = alleles.collect();
         //println!("td: {:?}, alleles: {:?}", three_digit, ma.len());
         let nalleles = ma.len();
@@ -172,7 +186,10 @@ pub fn read_hla_cds(
 
         let mylen = dna_string.len();
 
-        println!("three digit: {:?}, alleles: {:?}, longest 3 digit: {}, longest 2 digit: {}", three_digit, nalleles, mylen, req_len);
+        println!(
+            "three digit: {:?}, alleles: {:?}, longest 3 digit: {}, longest 2 digit: {}",
+            three_digit, nalleles, mylen, req_len
+        );
 
         if mylen >= req_len {
             seqs.push(dna_string.clone());
@@ -182,7 +199,11 @@ pub fn read_hla_cds(
         }
     }
 
-    println!( "Read {} Alleles, deduped into {} full-length 2-digit alleles", hlas.len(), transcript_counter);
+    println!(
+        "Read {} Alleles, deduped into {} full-length 2-digit alleles",
+        hlas.len(),
+        transcript_counter
+    );
     Ok((seqs, tx_ids, tx_to_allele_map))
 }
 
@@ -202,7 +223,6 @@ mod test {
         assert_eq!(al.f3, Some(1));
         assert_eq!(al.f4, Some(1));
     }
-
 
     const T2: &str = "A*01:01:38L";
 
