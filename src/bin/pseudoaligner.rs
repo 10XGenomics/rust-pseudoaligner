@@ -79,7 +79,7 @@ fn main() -> Result<(), Error> {
     if args.cmd_index {
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
-        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta, None)?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
         let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
         info!("Finished building index!");
 

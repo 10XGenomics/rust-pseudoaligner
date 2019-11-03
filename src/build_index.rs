@@ -19,6 +19,7 @@ use boomphf;
 use failure::Error;
 use rayon;
 use rayon::prelude::*;
+use log::info;
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
 
@@ -36,7 +37,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
         panic!("Too many ({}) sequences to handle.", seqs.len());
     }
 
-    println!("Sharding sequences...");
+    info!("Sharding sequences...");
 
     let mut buckets: Vec<_> = seqs
         .iter()
@@ -45,14 +46,14 @@ pub fn build_index<K: Kmer + Sync + Send>(
         .collect();
 
     buckets.par_sort_unstable_by_key(|x| x.0);
-    println!("Got {} sequence chunks", buckets.len());
+    info!("Got {} sequence chunks", buckets.len());
 
     let summarizer = Arc::new(debruijn::filter::CountFilterEqClass::new(MIN_KMERS));
     let sequence_shards = group_by_slices(&buckets, |x| x.0, MIN_SHARD_SEQUENCES);
 
     let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
 
-    println!("Assembling {} shards...", sequence_shards.len());
+    info!("Assembling {} shards...", sequence_shards.len());
 
     sequence_shards
         .into_par_iter()
@@ -61,36 +62,34 @@ pub fn build_index<K: Kmer + Sync + Send>(
         })
         .collect_into_vec(&mut shard_dbgs);
 
-    println!();
-    println!("Done separate de Bruijn graph construction");
-    println!("Starting merging disjoint graphs");
+    info!("Done dBG construction of shards");
+    info!("Starting merging disjoint graphs");
 
-    //println!("{:?}", summarizer);
     let dbg = merge_shard_dbgs(shard_dbgs);
-    println!("Merger of graphs complete");
+    info!("Graph merge complete");
 
-    // TODO update rust-debruijn version and fix this
     let eq_classes = summarizer.get_eq_classes();
 
-    println!("Indexing de Bruijn graph");
+    info!("Indexing de Bruijn graph");
     let dbg_index = make_dbg_index(&dbg);
 
-    let al = Pseudoaligner::new(
+    Ok(Pseudoaligner::new(
         dbg,
         eq_classes,
         dbg_index,
         tx_names.clone(),
         tx_gene_map.clone(),
-    );
-
-    validate_dbg(seqs, &al);
-
-    Ok(al)
+    ))
 }
 
-fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>) {
+
+// Manually compute the equivalence class of each kmer, and make sure
+// it matches that equivalence class for that kmer inside the DBG.
+#[inline(never)]
+pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>) {
     let mut eqclasses = HashMap::<K, Vec<u32>>::new();
 
+    // compute the equivalence class of each kmer
     for (i, s) in seqs.iter().enumerate() {
         for k in s.iter_kmers::<K>() {
             let eq = eqclasses.entry(k).or_insert(vec![]);
@@ -98,6 +97,7 @@ fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>
         }
     }
 
+    // check that the equivalence class of the kmer inside the graph matches the naive version
     for (k, mut test_eqclass) in eqclasses {
         test_eqclass.dedup();
 
@@ -121,6 +121,36 @@ fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>
         }
 
         assert_eq!(&test_eqclass, dbg_eqclass);
+    }
+
+    // check that each read sequence aligns cleanly
+    for (i, s) in seqs.iter().enumerate() {
+        let i = i as u32;
+
+        let (eqclass, bases_aligned) = al.map_read(s).unwrap();
+        assert_eq!(s.len(), bases_aligned);
+
+        if eqclass.len() > 1 {
+            assert!(eqclass.contains(&i));
+
+            // identical strings
+            if eqclass.len() == 2 && seqs[eqclass[0] as usize] == seqs[eqclass[1] as usize] {
+                continue;
+            }
+
+            // if the sequences aren't identical, the current string must be the shortest.
+            let shortest = eqclass.iter().map(|x| seqs[*x as usize].len()).min().unwrap();
+            assert_eq!(s.len(), shortest);
+
+            // debugging 
+            // println!("--- dup on {}", i);
+            // for e in &eqclass {
+            //     println!("{}: {}", e, al.tx_names[*e as usize]);
+            //     println!("{:?}", seqs[*e as usize]);
+            // }
+        } else {
+            assert_eq!(eqclass, vec![i]);
+        }
     }
 }
 
@@ -210,11 +240,7 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
         let node_id = node.node_id;
 
         for (offset, kmer) in node.into_iter().enumerate() {
-            let index = match mphf.try_hash(&kmer) {
-                None => panic!("can't find kmer"),
-                Some(index) => index,
-            };
-
+            let index = mphf.try_hash(&kmer).expect("can't find kmer is DBG graph!");
             node_and_offsets[index as usize] = (node_id as u32, offset as u32);
         }
     }
@@ -239,4 +265,31 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
         result.push(&data[slice_start..]);
     }
     result
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use bio::io::fasta;
+    use crate::utils;
+    use crate::config;
+
+    #[test]
+    fn test_gencode_small_build() -> Result<(), Error> {
+        let fasta = fasta::Reader::from_file("test/gencode_small.fa")?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta, None)?;
+        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
+        validate_dbg(&seqs, &index);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore]
+    fn test_gencode_full_build() -> Result<(), Error> {
+        let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa")?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta, None)?;
+        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
+        validate_dbg(&seqs, &index);
+        Ok(())
+    }
 }

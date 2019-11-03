@@ -16,7 +16,6 @@ use serde::{de::DeserializeOwned, Serialize};
 use bio::io::{fasta, fastq};
 use debruijn::dna_string::DnaString;
 use log::info;
-use regex::Regex;
 
 use crate::config;
 use crate::mappability::MappabilityRecord;
@@ -62,8 +61,7 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<dyn BufRead>, Error> {
 }
 
 pub fn read_transcripts(
-    reader: fasta::Reader<File>,
-    hla_pattern: Option<&str>,
+    reader: fasta::Reader<File>
 ) -> Result<(Vec<DnaString>, Vec<String>, HashMap<String, String>), Error> {
     let mut seqs = Vec::new();
     let mut transcript_counter = 0;
@@ -71,8 +69,6 @@ pub fn read_transcripts(
     let mut tx_to_gene_map = HashMap::new();
 
     let mut fasta_format: Option<u8> = None;
-
-    let re = hla_pattern.map(|s| Regex::new(s).unwrap());
 
     info!("Starting reading the Fasta file\n");
     for result in reader.records() {
@@ -87,15 +83,7 @@ pub fn read_transcripts(
             fasta_format = detect_fasta_format(&record);
         }
 
-        let (tx_id, gene_id, gene_name) = extract_tx_gene_id(&record, fasta_format)?;
-
-        let remove_tx = re
-            .as_ref()
-            .map_or(false, |regex| regex.is_match(&gene_name));
-
-        if remove_tx {
-            continue;
-        }
+        let (tx_id, gene_id, _) = extract_tx_gene_id(&record, fasta_format)?;
 
         tx_ids.push(tx_id.clone());
         tx_to_gene_map.insert(tx_id, gene_id);

@@ -1,6 +1,6 @@
 [package]
 name = "debruijn_mapping"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Avi Srivastava <avi.sri02@gmail.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
 edition = "2018"
 
@@ -15,7 +15,6 @@ itertools = "0.7"
 lazy_static = "1.4"
 log = "0.4"
 rayon = "1.0"
-regex = "1"
 serde = "1.0"
 shardio = "0.5"
 pretty_assertions = "0.5.1"
