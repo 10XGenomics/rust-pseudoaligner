@@ -349,37 +349,6 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
 /// Compute the intersection of v1 and v2 inplace on top of v1
 /// v1 and v2 must be sorted and deduplicated.
-pub fn intersect_slow<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
-    if v1.is_empty() {
-        return;
-    }
-
-    if v2.is_empty() {
-        v1.clear();
-    }
-
-    let mut fill_idx1 = 0;
-    let mut idx1 = 0;
-    let mut idx2 = 0;
-
-    while idx1 < v1.len() && idx2 < v2.len() {
-        match v1[idx1].cmp(&v2[idx2]) {
-            Ordering::Less => idx1 += 1,
-            Ordering::Greater => idx2 += 1,
-            Ordering::Equal => {
-                v1.swap(fill_idx1, idx1);
-                idx1 += 1;
-                idx2 += 1;
-                fill_idx1 += 1;
-            }
-        }
-    }
-
-    v1.truncate(fill_idx1);
-}
-
-/// Compute the intersection of v1 and v2 inplace on top of v1
-/// v1 and v2 must be sorted and deduplicated.
 pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     if v1.is_empty() {
         return;
@@ -517,6 +486,9 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
 #[cfg(test)]
 mod test {
     use super::*;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest::proptest;
     use std::collections::HashSet;
     use std::hash::Hash;
     use std::iter::FromIterator;
@@ -556,13 +528,30 @@ mod test {
         let v15 = vec![100000000];
         let v16 = vec![1, 23, 45, 1000001, 100000000];
 
-        let vecs = vec![v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16];
+        let vecs = vec![
+            v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16,
+        ];
 
         for v1 in vecs.iter() {
             for v2 in vecs.iter() {
                 test_intersect(v1, v2);
                 test_intersect(v2, v1);
             }
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 1000, .. ProptestConfig::default()})]
+        #[test]
+        fn intersect_prop_test(
+            mut v1 in vec(0..100usize, 0..5000usize),
+            mut v2 in vec(0..100usize, 0..5000usize),
+        ) {
+
+            v1.sort(); v1.dedup();
+            v2.sort(); v2.dedup();
+            test_intersect(&v1, &v2);
+            test_intersect(&v2, &v1);
         }
     }
 }

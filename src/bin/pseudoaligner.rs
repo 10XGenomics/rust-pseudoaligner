@@ -86,7 +86,6 @@ fn main() -> Result<(), Error> {
         info!("Writing index to disk");
         utils::write_obj(&index, args.arg_index)?;
         info!("Finished writing index!");
-  
     } else if args.cmd_map {
         info!("Reading index from disk");
         let index = utils::read_obj(args.arg_index)?;
@@ -95,7 +94,6 @@ fn main() -> Result<(), Error> {
         info!("Mapping reads from fastq");
         let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
         process_reads::<config::KmerType, _>(reads, &index, outdir)?;
-   
     } else if args.cmd_mappability {
         info!("Reading index from disk");
         let index = debruijn_mapping::utils::read_obj(args.arg_index)?;
