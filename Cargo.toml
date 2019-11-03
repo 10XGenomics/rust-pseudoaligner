@@ -33,5 +33,11 @@ branch = "master"
 version = "0.6"
 features = ["serde"]
 
+[dev-dependencies.proptest]
+version = "0.9"
+default-features = false
+# Enable all default features not known to break code coverage builds
+features = ["default-code-coverage"]
+
 [profile.release]
 debug = true

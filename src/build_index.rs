@@ -17,9 +17,9 @@ use crate::config::{MAX_WORKER, MIN_KMERS, U32_MAX};
 use crate::pseudoaligner::Pseudoaligner;
 use boomphf;
 use failure::Error;
+use log::info;
 use rayon;
 use rayon::prelude::*;
-use log::info;
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
 
@@ -82,7 +82,6 @@ pub fn build_index<K: Kmer + Sync + Send>(
     ))
 }
 
-
 // Manually compute the equivalence class of each kmer, and make sure
 // it matches that equivalence class for that kmer inside the DBG.
 #[inline(never)]
@@ -139,15 +138,19 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
             }
 
             // if the sequences aren't identical, the current string must be the shortest.
-            let shortest = eqclass.iter().map(|x| seqs[*x as usize].len()).min().unwrap();
+            let shortest = eqclass
+                .iter()
+                .map(|x| seqs[*x as usize].len())
+                .min()
+                .unwrap();
             assert_eq!(s.len(), shortest);
 
-            // debugging 
-            // println!("--- dup on {}", i);
-            // for e in &eqclass {
-            //     println!("{}: {}", e, al.tx_names[*e as usize]);
-            //     println!("{:?}", seqs[*e as usize]);
-            // }
+        // debugging
+        // println!("--- dup on {}", i);
+        // for e in &eqclass {
+        //     println!("{}: {}", e, al.tx_names[*e as usize]);
+        //     println!("{:?}", seqs[*e as usize]);
+        // }
         } else {
             assert_eq!(eqclass, vec![i]);
         }
@@ -248,6 +251,10 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
     boomphf::hashmap::NoKeyBoomHashMap::new_with_mphf(mphf, node_and_offsets)
 }
 
+/// Split the slice `data` into subslices of size at least
+/// `min_size`, while ensuring that consecutive runs of
+/// items with the same key as defined by the key function `f` are
+/// in the same subslice.
 fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
     data: &[T],
     f: F,
@@ -261,7 +268,7 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
             slice_start = i;
         }
     }
-    if slice_start > 0 || data.len() <= min_size {
+    if slice_start < data.len() {
         result.push(&data[slice_start..]);
     }
     result
@@ -270,11 +277,39 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use bio::io::fasta;
-    use crate::utils;
     use crate::config;
+    use crate::utils;
+    use bio::io::fasta;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest::proptest;
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 2000, .. ProptestConfig::default()})]
+        #[test]
+        fn group_by_slices_test(
+            //v: Vec<u16>,
+            v in vec(0..100usize, 0..5000usize),
+            min_sz in 1..200usize
+        ) {
+            let res =  group_by_slices(&v, |v| v.clone(), min_sz);
+            let total_len: usize = res.iter().map(|x| x.len()).sum();
+            prop_assert_eq!(v.len(), total_len);
+
+            for i in 1 .. res.len() {
+                prop_assert!(res[i-1].len() >= min_sz);
+            }
+
+            for i in 1 .. res.len() {
+                let prev = res[i-1];
+                let next = res[i];
+                prop_assert!(prev[prev.len() - 1] != next[0]);
+            }
+        }
+    }
 
     #[test]
+    #[ignore]
     fn test_gencode_small_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode_small.fa")?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
