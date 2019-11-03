@@ -4,11 +4,11 @@ use debruijn::Kmer;
 use failure::Error;
 use itertools::Itertools;
 
-use config::MAPPABILITY_COUNTS_LEN;
-use pseudoaligner::Pseudoaligner;
+use crate::config::MAPPABILITY_COUNTS_LEN;
+use crate::pseudoaligner::Pseudoaligner;
 
 // 1. Given graph, build a data structure of transcripts
-//    - tx: tx_name, gene_name, 
+//    - tx: tx_name, gene_name,
 // 2. For each de Bruijn graph node
 //    - count = number of kmers (L - K + 1)
 //    - transcript multiplicity = # of colors (size of equiv class)
@@ -19,7 +19,7 @@ use pseudoaligner::Pseudoaligner;
 //    - tx_mappability:
 //      tx_name gene_name length kmer_count fraction_unique_tx fraction_unique_gene
 // MappabilityRecord: tx_name, gene_name, tx_multiplicity: [usize], gene_multiplicity: [usize]
-//    
+//
 // fn update_counts(Vec<Record>, kmer_count, ids)
 //    fn update_counts(self, kmer_count, ids), Option(Gene_tx_map))
 //      - (if gene we'll need to make a gene vector instead of color)
@@ -30,7 +30,7 @@ pub struct MappabilityRecord {
     pub tx_name: String,
     pub gene_name: String,
     tx_multiplicity: [usize; MAPPABILITY_COUNTS_LEN],
-    gene_multiplicity: [usize; MAPPABILITY_COUNTS_LEN]
+    gene_multiplicity: [usize; MAPPABILITY_COUNTS_LEN],
 }
 
 impl MappabilityRecord {
@@ -41,14 +41,12 @@ impl MappabilityRecord {
             // tx_multiplicity[j] = # of kmers in this tx shared by j other transcripts
             tx_multiplicity: [0; MAPPABILITY_COUNTS_LEN],
             // gene_multiplicity[j] = # of kmers in the tx shared by j other genes
-            gene_multiplicity: [0; MAPPABILITY_COUNTS_LEN]
+            gene_multiplicity: [0; MAPPABILITY_COUNTS_LEN],
         }
     }
 
     pub fn total_kmer_count(&self) -> usize {
-        self.tx_multiplicity
-            .iter()
-            .sum()
+        self.tx_multiplicity.iter().sum()
     }
 
     pub fn add_tx_count(&mut self, count: usize, multiplicity: usize) {
@@ -66,7 +64,7 @@ impl MappabilityRecord {
             self.gene_multiplicity[multiplicity - 1] += count
         }
     }
-    
+
     pub fn fraction_unique_tx(&self) -> f64 {
         self.tx_multiplicity[0] as f64 / self.total_kmer_count() as f64
     }

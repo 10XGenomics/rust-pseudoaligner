@@ -1,21 +1,25 @@
 [package]
 name = "debruijn_mapping"
-version = "0.2.0"
-authors = ["Avi Srivastava <avi.srivastava@10xgenomics.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
+version = "0.3.0"
+authors = ["Avi Srivastava <avi.sri02@gmail.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
+edition = "2018"
 
 [dependencies]
-bio = "0.22"
-crossbeam = "0.4"
+bio = "0.29"
+crossbeam-utils = "0.6"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 docopt = "1.0"
 failure = "0.1"
 flate2 = "1.0"
 itertools = "0.7"
-lazy_static = "0.2"
+lazy_static = "1.4"
 log = "0.4"
 rayon = "1.0"
-regex = "1"
 serde = "1.0"
+shardio = "0.5"
+pretty_assertions = "0.5.1"
+boomphf = "0.5"
+
 
 [dependencies.bincode]
 version = "1.0"
@@ -25,8 +29,9 @@ features = ["i128"]
 git = "https://github.com/k3yavi/pretty-env-logger"
 branch = "master"
 
-[dependencies.boomphf]
-version = "0.5"
+[dependencies.smallvec]
+version = "0.6"
+features = ["serde"]
 
 [profile.release]
 debug = true
