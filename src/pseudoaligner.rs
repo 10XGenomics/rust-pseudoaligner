@@ -550,15 +550,18 @@ mod test {
         let v9 = vec![10, 15, 20];
         let v10 = vec![21, 22, 23];
         let v11 = vec![0];
-        let v12 = vec![5];
-        let v13 = vec![100000000];
-        let v14 = vec![1, 23, 45, 1000001, 100000000];
+        let v12 = vec![0, 1000, 5000];
+        let v13 = vec![0, 1000, 1000001];
+        let v14 = vec![5];
+        let v15 = vec![100000000];
+        let v16 = vec![1, 23, 45, 1000001, 100000000];
 
-        let vecs = vec![v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14];
+        let vecs = vec![v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16];
 
         for v1 in vecs.iter() {
             for v2 in vecs.iter() {
                 test_intersect(v1, v2);
+                test_intersect(v2, v1);
             }
         }
     }

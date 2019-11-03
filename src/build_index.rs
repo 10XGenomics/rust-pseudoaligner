@@ -277,7 +277,7 @@ mod test {
     #[test]
     fn test_gencode_small_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode_small.fa")?;
-        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta, None)?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
         let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
         validate_dbg(&seqs, &index);
         Ok(())
@@ -287,7 +287,7 @@ mod test {
     #[ignore]
     fn test_gencode_full_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa")?;
-        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta, None)?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
         let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
         validate_dbg(&seqs, &index);
         Ok(())
