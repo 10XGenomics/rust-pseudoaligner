@@ -21,7 +21,7 @@ use crate::config;
 use crate::mappability::MappabilityRecord;
 
 const MAPPABILITY_HEADER_STRING: &'static str =
-    "tx_name\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
+    "tx_name\tgene_id\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
 
 pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(
     g: &T,
@@ -182,6 +182,7 @@ pub fn write_mappability_tsv<P: AsRef<Path>>(
             outfile,
             "{}\t{}\t{}\t{}\t{}\n",
             record.tx_name,
+            record.gene_id,
             record.gene_name,
             record.total_kmer_count(),
             record.fraction_unique_tx(),
