@@ -8,7 +8,7 @@ use crate::config::MAPPABILITY_COUNTS_LEN;
 use crate::pseudoaligner::Pseudoaligner;
 
 // 1. Given graph, build a data structure of transcripts
-//    - tx: tx_id, gene_name,
+//    - tx: tx_name, gene_name,
 // 2. For each de Bruijn graph node
 //    - count = number of kmers (L - K + 1)
 //    - transcript multiplicity = # of colors (size of equiv class)
