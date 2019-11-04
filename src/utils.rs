@@ -78,7 +78,7 @@ pub fn read_transcripts(
         let dna_string = DnaString::from_acgt_bytes_hashn(record.seq(), record.id().as_bytes());
         seqs.push(dna_string);
 
-        if let FastaFormat::Unknown = fasta_format{
+        if let FastaFormat::Unknown = fasta_format {
             fasta_format = detect_fasta_format(&record)?;
         }
 
@@ -113,20 +113,15 @@ pub fn detect_fasta_format(record: &fasta::Record) -> Result<FastaFormat, Error>
     if desc_tokens.len() >= 1 {
         let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
         if gene_tokens.len() == 2 && gene_tokens[0] == "gene" {
-            return Ok(FastaFormat::Gffread)
+            return Ok(FastaFormat::Gffread);
         }
     } else if desc_tokens.len() == 5 {
         return Ok(FastaFormat::Ensembl);
     }
-    Err(failure::err_msg(
-        "Failed to detect FASTA header format.",
-    ))
+    Err(failure::err_msg("Failed to detect FASTA header format."))
 }
 
-pub fn extract_tx_gene_id(
-    record: &fasta::Record,
-    fasta_format: &FastaFormat,
-) -> (String, String) {
+pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: &FastaFormat) -> (String, String) {
     match *fasta_format {
         FastaFormat::Gencode => {
             let id_tokens: Vec<&str> = record.id().split('|').collect();
@@ -141,7 +136,7 @@ pub fn extract_tx_gene_id(
             let gene_tmp: Vec<&str> = desc_tokens[2].split(':').collect();
             let gene_id = gene_tmp[1].to_string();
             (tx_id, gene_id)
-        },
+        }
         FastaFormat::Gffread => {
             let id_tokens: Vec<&str> = record.id().split(' ').collect();
             let tx_id = id_tokens[0].to_string();
@@ -149,7 +144,7 @@ pub fn extract_tx_gene_id(
             let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
             let gene_id = gene_tokens[1].to_string();
             (tx_id, gene_id)
-        },
+        }
         FastaFormat::Unknown => {
             panic!("fasta_format was uninitialized");
         }

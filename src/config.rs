@@ -7,7 +7,7 @@ pub enum FastaFormat {
     Unknown,
     Gencode,
     Ensembl,
-    Gffread
+    Gffread,
 }
 
 // main configs
