@@ -109,12 +109,18 @@ pub fn detect_fasta_format(record: &fasta::Record) -> Option<u8> {
     if id_tokens.len() == 9 {
         return Some(config::FASTA_FORMAT_GENCODE);
     }
+
     let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
-    if desc_tokens.len() == 5 {
-        Some(config::FASTA_FORMAT_ENSEMBL)
-    } else {
-        None
+    if desc_tokens.len() >= 1 {
+        let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
+        if gene_tokens.len() == 2 && gene_tokens[0] == "gene" {
+            return Some(config::FASTA_FORMAT_CUFFLINKS)
+        }
+    } else if desc_tokens.len() == 5 {
+        return Some(config::FASTA_FORMAT_ENSEMBL);
     }
+
+    None
 }
 
 pub fn extract_tx_gene_id(
@@ -134,6 +140,14 @@ pub fn extract_tx_gene_id(
             let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
             let gene_tmp: Vec<&str> = desc_tokens[2].split(':').collect();
             let gene_id = gene_tmp[1].to_string();
+            Ok((tx_id, gene_id, "".to_string()))
+        },
+        Some(config::FASTA_FORMAT_CUFFLINKS) => {
+            let id_tokens: Vec<&str> = record.id().split(' ').collect();
+            let tx_id = id_tokens[0].to_string();
+            let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
+            let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
+            let gene_id = gene_tokens[1].to_string();
             Ok((tx_id, gene_id, "".to_string()))
         }
         _ => Err(failure::err_msg(
