@@ -8,14 +8,14 @@ use crate::config::MAPPABILITY_COUNTS_LEN;
 use crate::pseudoaligner::Pseudoaligner;
 
 // 1. Given graph, build a data structure of transcripts
-//    - tx: tx_name, gene_name,
+//    - tx: tx_id, gene_name,
 // 2. For each de Bruijn graph node
 //    - count = number of kmers (L - K + 1)
 //    - transcript multiplicity = # of colors (size of equiv class)
 //    - gene multiplicity = # of distinct genes
 //    - add count, transcript multiplicity to tx_mappability
 //    - add count, gene multiplicity to gene_mappability
-// 3. Output results to tx_mappability.tsv and gene_mappability.tsc
+// 3. Output results to tx_mappability.tsv and gene_mappability.tsv
 //    - tx_mappability:
 //      tx_name gene_name length kmer_count fraction_unique_tx fraction_unique_gene
 // MappabilityRecord: tx_name, gene_name, tx_multiplicity: [usize], gene_multiplicity: [usize]
