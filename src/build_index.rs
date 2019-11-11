@@ -243,7 +243,7 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
         let node_id = node.node_id;
 
         for (offset, kmer) in node.into_iter().enumerate() {
-            let index = mphf.try_hash(&kmer).expect("can't find kmer is DBG graph!");
+            let index = mphf.try_hash(&kmer).expect("can't find kmer in DBG graph!");
             node_and_offsets[index as usize] = (node_id as u32, offset as u32);
         }
     }

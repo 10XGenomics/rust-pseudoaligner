@@ -17,11 +17,11 @@ use bio::io::{fasta, fastq};
 use debruijn::dna_string::DnaString;
 use log::info;
 
-use crate::config;
+use crate::config::FastaFormat;
 use crate::mappability::MappabilityRecord;
 
 const MAPPABILITY_HEADER_STRING: &'static str =
-    "tx_name\tgene_name\ttx_kmer_count\ttx_fraction_unique\tgene_fraction_unique\n";
+    "tx_name\tgene_name\ttx_kmer_count\tfrac_kmer_unique_tx\tfrac_kmer_unique_gene\n";
 
 pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(
     g: &T,
@@ -67,8 +67,7 @@ pub fn read_transcripts(
     let mut transcript_counter = 0;
     let mut tx_ids = Vec::new();
     let mut tx_to_gene_map = HashMap::new();
-
-    let mut fasta_format: Option<u8> = None;
+    let mut fasta_format = FastaFormat::Unknown;
 
     info!("Starting reading the Fasta file\n");
     for result in reader.records() {
@@ -79,11 +78,11 @@ pub fn read_transcripts(
         let dna_string = DnaString::from_acgt_bytes_hashn(record.seq(), record.id().as_bytes());
         seqs.push(dna_string);
 
-        if let None = fasta_format {
-            fasta_format = detect_fasta_format(&record);
+        if let FastaFormat::Unknown = fasta_format {
+            fasta_format = detect_fasta_format(&record)?;
         }
 
-        let (tx_id, gene_id, _) = extract_tx_gene_id(&record, fasta_format)?;
+        let (tx_id, gene_id) = extract_tx_gene_id(&record, &fasta_format);
 
         tx_ids.push(tx_id.clone());
         tx_to_gene_map.insert(tx_id, gene_id);
@@ -104,41 +103,51 @@ pub fn read_transcripts(
     Ok((seqs, tx_ids, tx_to_gene_map))
 }
 
-pub fn detect_fasta_format(record: &fasta::Record) -> Option<u8> {
+pub fn detect_fasta_format(record: &fasta::Record) -> Result<FastaFormat, Error> {
     let id_tokens: Vec<&str> = record.id().split('|').collect();
     if id_tokens.len() == 9 {
-        return Some(config::FASTA_FORMAT_GENCODE);
+        return Ok(FastaFormat::Gencode);
     }
+
     let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
-    if desc_tokens.len() == 5 {
-        Some(config::FASTA_FORMAT_ENSEMBL)
-    } else {
-        None
+    if desc_tokens.len() >= 1 {
+        let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
+        if gene_tokens.len() == 2 && gene_tokens[0] == "gene" {
+            return Ok(FastaFormat::Gffread);
+        }
+    } else if desc_tokens.len() == 5 {
+        return Ok(FastaFormat::Ensembl);
     }
+    Err(failure::err_msg("Failed to detect FASTA header format."))
 }
 
-pub fn extract_tx_gene_id(
-    record: &fasta::Record,
-    fasta_format: Option<u8>,
-) -> Result<(String, String, String), Error> {
-    match fasta_format {
-        Some(config::FASTA_FORMAT_GENCODE) => {
+pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: &FastaFormat) -> (String, String) {
+    match *fasta_format {
+        FastaFormat::Gencode => {
             let id_tokens: Vec<&str> = record.id().split('|').collect();
             let tx_id = id_tokens[0].to_string();
             let gene_id = id_tokens[1].to_string();
-            let gene_name = id_tokens[5].to_string();
-            Ok((tx_id, gene_id, gene_name))
+            // let gene_name = id_tokens[5].to_string();
+            (tx_id, gene_id)
         }
-        Some(config::FASTA_FORMAT_ENSEMBL) => {
+        FastaFormat::Ensembl => {
             let tx_id = record.id().to_string();
             let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
             let gene_tmp: Vec<&str> = desc_tokens[2].split(':').collect();
             let gene_id = gene_tmp[1].to_string();
-            Ok((tx_id, gene_id, "".to_string()))
+            (tx_id, gene_id)
         }
-        _ => Err(failure::err_msg(
-            "Unknown fasta format in extract_tx_gene_id.",
-        )),
+        FastaFormat::Gffread => {
+            let id_tokens: Vec<&str> = record.id().split(' ').collect();
+            let tx_id = id_tokens[0].to_string();
+            let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
+            let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
+            let gene_id = gene_tokens[1].to_string();
+            (tx_id, gene_id)
+        }
+        FastaFormat::Unknown => {
+            panic!("fasta_format was uninitialized");
+        }
     }
 }
 

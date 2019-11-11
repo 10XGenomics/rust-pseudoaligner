@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{mpsc, Arc, Mutex};
-use std::{self, cmp::Ordering, fs::File, str};
+use std::{self, fs::File, str};
 
 use bio::io::fastq;
 use boomphf::hashmap::NoKeyBoomHashMap;

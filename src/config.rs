@@ -2,9 +2,13 @@
 
 use debruijn::kmer;
 
-// transcriptome fasta headers
-pub const FASTA_FORMAT_GENCODE: u8 = 0;
-pub const FASTA_FORMAT_ENSEMBL: u8 = 1;
+// transcriptome fasta header formats
+pub enum FastaFormat {
+    Unknown,
+    Gencode,
+    Ensembl,
+    Gffread,
+}
 
 // main configs
 pub const MEM_SIZE: usize = 1;
