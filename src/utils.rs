@@ -18,10 +18,6 @@ use debruijn::dna_string::DnaString;
 use log::info;
 
 use crate::config::FastaFormat;
-use crate::mappability::MappabilityRecord;
-
-const MAPPABILITY_HEADER_STRING: &'static str =
-    "tx_name\tgene_name\ttx_kmer_count\tfrac_kmer_unique_tx\tfrac_kmer_unique_gene\n";
 
 pub fn write_obj<T: Serialize, P: AsRef<Path> + Debug>(
     g: &T,
@@ -127,6 +123,7 @@ pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: &FastaFormat) ->
             let id_tokens: Vec<&str> = record.id().split('|').collect();
             let tx_id = id_tokens[0].to_string();
             let gene_id = id_tokens[1].to_string();
+            // (human readable name)
             // let gene_name = id_tokens[5].to_string();
             (tx_id, gene_id)
         }
@@ -162,27 +159,4 @@ pub fn open_file<P: AsRef<Path>>(filename: &str, outdir: P) -> Result<File, Erro
     let out_fn = outdir.as_ref().join(filename);
     let outfile = File::create(&out_fn)?;
     Ok(outfile)
-}
-
-pub fn write_mappability_tsv<P: AsRef<Path>>(
-    records: Vec<MappabilityRecord>,
-    outdir: P,
-) -> Result<(), Error> {
-    let mut outfile = open_file("tx_mappability.tsv", outdir)?;
-
-    outfile.write_all(MAPPABILITY_HEADER_STRING.as_bytes())?;
-
-    for record in records {
-        write!(
-            outfile,
-            "{}\t{}\t{}\t{}\t{}\n",
-            record.tx_name,
-            record.gene_name,
-            record.total_kmer_count(),
-            record.fraction_unique_tx(),
-            record.fraction_unique_gene()
-        )?;
-    }
-
-    Ok(())
 }

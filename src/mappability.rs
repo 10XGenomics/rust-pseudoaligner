@@ -3,9 +3,12 @@
 use debruijn::Kmer;
 use failure::Error;
 use itertools::Itertools;
+use std::io::Write;
+use std::path::Path;
 
 use crate::config::MAPPABILITY_COUNTS_LEN;
 use crate::pseudoaligner::Pseudoaligner;
+use crate::utils::open_file;
 
 // 1. Given graph, build a data structure of transcripts
 //    - tx: tx_name, gene_name,
@@ -24,6 +27,8 @@ use crate::pseudoaligner::Pseudoaligner;
 //    fn update_counts(self, kmer_count, ids), Option(Gene_tx_map))
 //      - (if gene we'll need to make a gene vector instead of color)
 //    fn fraction_unique(self) -> f64
+const MAPPABILITY_HEADER_STRING: &'static str =
+    "tx_name\tgene_name\ttx_kmer_count\tfrac_kmer_unique_tx\tfrac_kmer_unique_gene\n";
 
 #[derive(Debug)]
 pub struct MappabilityRecord {
@@ -72,6 +77,32 @@ impl MappabilityRecord {
     pub fn fraction_unique_gene(&self) -> f64 {
         self.gene_multiplicity[0] as f64 / self.total_kmer_count() as f64
     }
+
+    pub fn to_tsv(&self) -> String {
+        format!(
+            "{}\t{}\t{}\t{}\t{}",
+            self.tx_name,
+            self.gene_name,
+            self.total_kmer_count(),
+            self.fraction_unique_tx(),
+            self.fraction_unique_gene()
+        )
+    }
+}
+
+pub fn write_mappability_tsv<P: AsRef<Path>>(
+    records: Vec<MappabilityRecord>,
+    outdir: P,
+) -> Result<(), Error> {
+    let mut outfile = open_file("tx_mappability.tsv", outdir)?;
+
+    outfile.write_all(MAPPABILITY_HEADER_STRING.as_bytes())?;
+
+    for record in records {
+        write!(outfile, "{}\n", record.to_tsv())?;
+    }
+
+    Ok(())
 }
 
 // pub fn update_counts(records: &mut Vec<MappabilityRecord>,
