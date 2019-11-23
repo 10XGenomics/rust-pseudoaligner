@@ -10,7 +10,9 @@ use std::{env, fs};
 use std::{path::PathBuf, str};
 
 use debruijn_mapping::{
-    build_index::build_index, mappability::analyze_graph, pseudoaligner,
+    build_index::build_index,
+    mappability::{analyze_graph, write_mappability_tsv},
+    pseudoaligner,
     pseudoaligner::process_reads,
 };
 use debruijn_mapping::{config, utils};
@@ -102,7 +104,7 @@ fn main() -> Result<(), Error> {
         let records = analyze_graph::<config::KmerType>(&index)?;
         info!("Finished analyzing!");
         info!("{} transcripts total", records.len());
-        utils::write_mappability_tsv(records, outdir)?;
+        write_mappability_tsv(records, outdir)?;
     } else if args.cmd_idxstats {
         let index: pseudoaligner::Pseudoaligner<config::KmerType> =
             utils::read_obj(args.arg_index)?;
