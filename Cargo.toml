@@ -6,8 +6,10 @@ edition = "2018"
 
 [dependencies]
 bio = "0.29"
+bio-types = "0.5"
 crossbeam-utils = "0.6"
-debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
+#debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
+debruijn = { path = "../rust-debruijn" }
 docopt = "1.0"
 failure = "0.1"
 flate2 = "1.0"

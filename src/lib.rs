@@ -6,3 +6,4 @@ pub mod config;
 pub mod mappability;
 pub mod pseudoaligner;
 pub mod utils;
+pub mod scatter;

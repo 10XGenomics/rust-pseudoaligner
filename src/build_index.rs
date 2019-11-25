@@ -161,13 +161,36 @@ type PmerType = debruijn::kmer::Kmer6;
 
 lazy_static! {
     static ref PERM: Vec<usize> = {
+
         let maxp = 1 << (2 * PmerType::k());
-        let mut permutation = Vec::with_capacity(maxp);
+        let mut sorted_kmers: Vec<PmerType> = Vec::with_capacity(maxp);
         for i in 0..maxp {
-            permutation.push(i);
+            let kmer = Kmer::from_u64(i as u64);
+            sorted_kmers.push(kmer);
         }
+        sorted_kmers.sort_by_key(count_a_t_bases);
+
+        let mut permutation = Vec::new();
+        permutation.resize(maxp, 0);
+
+        for (sort_pos, kmer) in sorted_kmers.into_iter().enumerate() {
+            permutation[kmer.to_u64() as usize] = sort_pos;
+        }
+
+
         permutation
     };
+}
+
+/// Count the number of A/T bases in a kmer
+fn count_a_t_bases<K: Kmer>(kmer: &K) -> usize {
+    let mut count = 0;
+    for i in 0..K::k() {
+        if kmer.get(i) == b'A' || kmer.get(i) == b'T' {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn partition_contigs<'a, K: Kmer>(
@@ -233,12 +256,13 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
     println!("Total {:?} kmers to process in dbg", total_kmers);
     println!("Making mphf of kmers");
     let mphf =
+        //boomphf::Mphf::from_chunked_iterator(1.7, dbg, total_kmers);
         boomphf::Mphf::from_chunked_iterator_parallel(1.7, dbg, None, total_kmers, MAX_WORKER);
-
     println!("Assigning offsets to kmers");
     let mut node_and_offsets = Vec::with_capacity(total_kmers);
     node_and_offsets.resize(total_kmers, (U32_MAX as u32, U32_MAX as u32));
 
+/*
     for node in dbg {
         let node_id = node.node_id;
 
@@ -247,6 +271,25 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
             node_and_offsets[index as usize] = (node_id as u32, offset as u32);
         }
     }
+*/
+    
+
+    use crate::scatter::Scatter;
+    let scatter = Scatter::new(&mut node_and_offsets[..]);
+
+    (0..dbg.len())
+    .into_par_iter()
+    .for_each_init(
+        || scatter.handle(),
+        |handle, node_id| {
+            let node = dbg.get_node_kmer(node_id);
+
+            for (offset, kmer) in node.into_iter().enumerate() {
+                let index = mphf.try_hash(&kmer).expect("can't find kmer in DBG graph!");
+                handle.write(index as usize, (node_id as u32, offset as u32));
+            }
+        }
+    );
 
     boomphf::hashmap::NoKeyBoomHashMap::new_with_mphf(mphf, node_and_offsets)
 }
@@ -309,7 +352,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn test_gencode_small_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode_small.fa")?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
@@ -319,12 +361,11 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn test_gencode_full_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa")?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
         let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
-        validate_dbg(&seqs, &index);
+        //validate_dbg(&seqs, &index);
         Ok(())
     }
 }
