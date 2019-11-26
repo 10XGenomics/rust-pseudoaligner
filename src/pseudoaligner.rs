@@ -19,7 +19,7 @@ use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::equiv_classes::EqClassIdType;
-use crate::config::{LEFT_EXTEND_FRACTION, MAX_WORKER, READ_COVERAGE_THRESHOLD};
+use crate::config::{LEFT_EXTEND_FRACTION, READ_COVERAGE_THRESHOLD};
 use crate::utils;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -385,17 +385,18 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
     reader: fastq::Reader<File>,
     index: &Pseudoaligner<K>,
     outdir: P,
+    num_threads: usize,
 ) -> Result<(), Error> {
     info!("Done Reading index");
     info!("Starting Multi-threaded Mapping");
     info!("Output directory: {:?}", outdir);
 
-    let (tx, rx) = mpsc::sync_channel(MAX_WORKER);
+    let (tx, rx) = mpsc::sync_channel(num_threads);
     let atomic_reader = Arc::new(Mutex::new(reader.records()));
 
-    info!("Spawning {} threads for Mapping.\n", MAX_WORKER);
+    info!("Spawning {} threads for Mapping.\n", num_threads);
     scope(|scope| {
-        for _ in 0..MAX_WORKER {
+        for _ in 0..num_threads {
             let tx = tx.clone();
             let reader = Arc::clone(&atomic_reader);
 
@@ -444,7 +445,7 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
             match eq_class {
                 None => {
                     dead_thread_count += 1;
-                    if dead_thread_count == MAX_WORKER {
+                    if dead_thread_count == num_threads {
                         drop(tx);
                         // can't continue with a flag check
                         // weird Rusty way !

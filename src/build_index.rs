@@ -13,13 +13,13 @@ use debruijn::filter::*;
 use debruijn::graph::*;
 use debruijn::*;
 
-use crate::config::{MAX_WORKER, MIN_KMERS, U32_MAX};
+use crate::config::{MIN_KMERS, U32_MAX};
 use crate::equiv_classes::{EqClassIdType, CountFilterEqClass};
 use crate::pseudoaligner::Pseudoaligner;
 use boomphf;
 use failure::Error;
 use log::info;
-use rayon;
+use rayon::{self, ThreadPool};
 use rayon::prelude::*;
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
@@ -28,10 +28,11 @@ pub fn build_index<K: Kmer + Sync + Send>(
     seqs: &[DnaString],
     tx_names: &Vec<String>,
     tx_gene_map: &HashMap<String, String>,
+    num_threads: usize,
 ) -> Result<Pseudoaligner<K>, Error> {
     // Thread pool Configuration for calling BOOMphf
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(MAX_WORKER)
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
         .build()?;
 
     if seqs.len() >= U32_MAX {
@@ -46,22 +47,27 @@ pub fn build_index<K: Kmer + Sync + Send>(
         .flat_map(|(id, seq)| partition_contigs::<KmerType>(seq, id as u32))
         .collect();
 
-    buckets.par_sort_unstable_by_key(|x| x.0);
+
+    pool.install(|| { buckets.par_sort_unstable_by_key(|x| x.0); });
     info!("Got {} sequence chunks", buckets.len());
 
     let summarizer = Arc::new(CountFilterEqClass::new(MIN_KMERS));
     let sequence_shards = group_by_slices(&buckets, |x| x.0, MIN_SHARD_SEQUENCES);
 
-    let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
-
     info!("Assembling {} shards...", sequence_shards.len());
 
-    sequence_shards
-        .into_par_iter()
-        .map_with(summarizer.clone(), |s, strings| {
-            assemble_shard::<K>(strings, s)
-        })
-        .collect_into_vec(&mut shard_dbgs);
+    let shard_dbgs = 
+        pool.install(|| {
+            let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
+            sequence_shards.into_par_iter()
+                .into_par_iter()
+                .map_with(summarizer.clone(), |s, strings| {
+                    assemble_shard::<K>(strings, s)
+                })
+                .collect_into_vec(&mut shard_dbgs);
+
+            shard_dbgs
+        });
 
     info!("Done dBG construction of shards");
     info!("Starting merging disjoint graphs");
@@ -72,7 +78,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
     let eq_classes = summarizer.get_eq_classes();
 
     info!("Indexing de Bruijn graph");
-    let dbg_index = make_dbg_index(&dbg);
+    let dbg_index = make_dbg_index(&dbg, &pool, num_threads);
 
     Ok(Pseudoaligner::new(
         dbg,
@@ -248,6 +254,8 @@ fn merge_shard_dbgs<K: Kmer + Sync + Send>(
 #[inline(never)]
 fn make_dbg_index<K: Kmer + Sync + Send>(
     dbg: &DebruijnGraph<K, EqClassIdType>,
+    pool: &ThreadPool,
+    num_threads: usize,
 ) -> NoKeyBoomHashMap<K, (u32, u32)> {
     let mut total_kmers = 0;
     let kmer_length = K::k();
@@ -259,39 +267,30 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
     println!("Making mphf of kmers");
     let mphf =
         //boomphf::Mphf::from_chunked_iterator(1.7, dbg, total_kmers);
-        boomphf::Mphf::from_chunked_iterator_parallel(1.7, dbg, None, total_kmers, MAX_WORKER);
+        boomphf::Mphf::from_chunked_iterator_parallel(1.7, dbg, None, total_kmers, num_threads);
+
     println!("Assigning offsets to kmers");
     let mut node_and_offsets = Vec::with_capacity(total_kmers);
     node_and_offsets.resize(total_kmers, (U32_MAX as u32, U32_MAX as u32));
-
-/*
-    for node in dbg {
-        let node_id = node.node_id;
-
-        for (offset, kmer) in node.into_iter().enumerate() {
-            let index = mphf.try_hash(&kmer).expect("can't find kmer in DBG graph!");
-            node_and_offsets[index as usize] = (node_id as u32, offset as u32);
-        }
-    }
-*/
     
+    let scatter = crate::scatter::ScatterToVec::new(&mut node_and_offsets[..]);
 
-    use crate::scatter::Scatter;
-    let scatter = Scatter::new(&mut node_and_offsets[..]);
+    pool.install(|| {
+        (0..dbg.len())
+        .into_par_iter()
+        .for_each_init(
+            // Each thread gets a scatter handle to write values from
+            || scatter.handle(),
+            |handle, node_id| {
+                let node = dbg.get_node_kmer(node_id);
 
-    (0..dbg.len())
-    .into_par_iter()
-    .for_each_init(
-        || scatter.handle(),
-        |handle, node_id| {
-            let node = dbg.get_node_kmer(node_id);
-
-            for (offset, kmer) in node.into_iter().enumerate() {
-                let index = mphf.try_hash(&kmer).expect("can't find kmer in DBG graph!");
-                handle.write(index as usize, (node_id as u32, offset as u32));
+                for (offset, kmer) in node.into_iter().enumerate() {
+                    let index = mphf.try_hash(&kmer).expect("can't find kmer in DBG graph!");
+                    handle.write(index as usize, (node_id as u32, offset as u32));
+                }
             }
-        }
-    );
+        );
+    });
 
     boomphf::hashmap::NoKeyBoomHashMap::new_with_mphf(mphf, node_and_offsets)
 }
@@ -357,7 +356,7 @@ mod test {
     fn test_gencode_small_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode_small.fa")?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
+        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, 2)?;
         validate_dbg(&seqs, &index);
         Ok(())
     }
@@ -367,7 +366,7 @@ mod test {
     fn test_gencode_full_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa")?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let _index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
+        let _index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, 2)?;
         //validate_dbg(&seqs, &index);
         Ok(())
     }
