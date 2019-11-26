@@ -11,13 +11,14 @@ use bio::io::fastq;
 use boomphf::hashmap::NoKeyBoomHashMap;
 use crossbeam_utils::thread::scope;
 use debruijn::dna_string::DnaString;
-use debruijn::filter::EqClassIdType;
+
 use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
 use failure::Error;
 use log::info;
 use serde::{Deserialize, Serialize};
 
+use crate::equiv_classes::EqClassIdType;
 use crate::config::{LEFT_EXTEND_FRACTION, MAX_WORKER, READ_COVERAGE_THRESHOLD};
 use crate::utils;
 

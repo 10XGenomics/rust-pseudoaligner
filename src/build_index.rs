@@ -14,6 +14,7 @@ use debruijn::graph::*;
 use debruijn::*;
 
 use crate::config::{MAX_WORKER, MIN_KMERS, U32_MAX};
+use crate::equiv_classes::{EqClassIdType, CountFilterEqClass};
 use crate::pseudoaligner::Pseudoaligner;
 use boomphf;
 use failure::Error;
@@ -48,7 +49,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
     buckets.par_sort_unstable_by_key(|x| x.0);
     info!("Got {} sequence chunks", buckets.len());
 
-    let summarizer = Arc::new(debruijn::filter::CountFilterEqClass::new(MIN_KMERS));
+    let summarizer = Arc::new(CountFilterEqClass::new(MIN_KMERS));
     let sequence_shards = group_by_slices(&buckets, |x| x.0, MIN_SHARD_SEQUENCES);
 
     let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
@@ -117,6 +118,7 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
                 "dbg eq class not unique: eqclass_id: {}, node: {}",
                 eq_class, node_id
             );
+            assert_eq!(&dbg_eq_clone, dbg_eqclass);
         }
 
         assert_eq!(&test_eqclass, dbg_eqclass);
@@ -361,10 +363,11 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_gencode_full_build() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa")?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
+        let _index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
         //validate_dbg(&seqs, &index);
         Ok(())
     }
