@@ -400,8 +400,8 @@ mod test {
         let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";
         let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa").context(msg)?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let _index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, 2)?;
-        //validate_dbg(&seqs, &_index);
+        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, 2)?;
+        validate_dbg(&seqs, &index);
         Ok(())
     }
 }
