@@ -14,13 +14,13 @@ use debruijn::graph::*;
 use debruijn::*;
 
 use crate::config::{MIN_KMERS, U32_MAX};
-use crate::equiv_classes::{EqClassIdType, CountFilterEqClass};
+use crate::equiv_classes::{CountFilterEqClass, EqClassIdType};
 use crate::pseudoaligner::Pseudoaligner;
 use boomphf;
 use failure::Error;
 use log::info;
-use rayon::{self, ThreadPool};
 use rayon::prelude::*;
+use rayon::{self, ThreadPool};
 
 const MIN_SHARD_SEQUENCES: usize = 2000;
 
@@ -47,8 +47,9 @@ pub fn build_index<K: Kmer + Sync + Send>(
         .flat_map(|(id, seq)| partition_contigs::<KmerType>(seq, id as u32))
         .collect();
 
-
-    pool.install(|| { buckets.par_sort_unstable_by_key(|x| x.0); });
+    pool.install(|| {
+        buckets.par_sort_unstable_by_key(|x| x.0);
+    });
     info!("Got {} sequence chunks", buckets.len());
 
     let summarizer = Arc::new(CountFilterEqClass::new(MIN_KMERS));
@@ -56,18 +57,18 @@ pub fn build_index<K: Kmer + Sync + Send>(
 
     info!("Assembling {} shards...", sequence_shards.len());
 
-    let shard_dbgs = 
-        pool.install(|| {
-            let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
-            sequence_shards.into_par_iter()
-                .into_par_iter()
-                .map_with(summarizer.clone(), |s, strings| {
-                    assemble_shard::<K>(strings, s)
-                })
-                .collect_into_vec(&mut shard_dbgs);
+    let shard_dbgs = pool.install(|| {
+        let mut shard_dbgs = Vec::with_capacity(sequence_shards.len());
+        sequence_shards
+            .into_par_iter()
+            .into_par_iter()
+            .map_with(summarizer.clone(), |s, strings| {
+                assemble_shard::<K>(strings, s)
+            })
+            .collect_into_vec(&mut shard_dbgs);
 
-            shard_dbgs
-        });
+        shard_dbgs
+    });
 
     info!("Done dBG construction of shards");
     info!("Starting merging disjoint graphs");
@@ -135,7 +136,9 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
         let i = i as u32;
 
         // transcripts shorter than k can't be mapped
-        if s.len() < K::k() { continue; }
+        if s.len() < K::k() {
+            continue;
+        }
 
         let (eqclass, bases_aligned) = al.map_read(s).unwrap();
         assert_eq!(s.len(), bases_aligned);
@@ -158,7 +161,6 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
                 .unwrap();
 
             if s.len() != shortest {
-
                 let mut path_buf: Vec<usize> = Vec::new();
 
                 use std::iter::FromIterator;
@@ -166,20 +168,25 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
                 let my_nodes: HashSet<usize> = HashSet::from_iter(path_buf.iter().cloned());
 
                 println!("eqclass: {:?}", eqclass);
-                for i in & eqclass {
-                    println!("{}: {}, len:{}", i, al.tx_names[*i as usize], seqs[*i as usize].len());
+                for i in &eqclass {
+                    println!(
+                        "{}: {}, len:{}",
+                        i,
+                        al.tx_names[*i as usize],
+                        seqs[*i as usize].len()
+                    );
                     println!("{:?}", seqs[*i as usize]);
 
-                    
-                    let r = al.map_read_to_nodes(&seqs[*i as usize], &mut path_buf).unwrap();
+                    let r = al
+                        .map_read_to_nodes(&seqs[*i as usize], &mut path_buf)
+                        .unwrap();
                     let other_nodes = HashSet::from_iter(path_buf.iter().cloned());
-                    
+
                     println!("r: {:?}", r);
                     println!("{:?}", path_buf);
 
                     assert!(my_nodes.is_subset(&other_nodes));
                     println!("---");
-
                 }
             }
 
@@ -199,7 +206,6 @@ type PmerType = debruijn::kmer::Kmer6;
 
 lazy_static! {
     static ref PERM: Vec<usize> = {
-
         let maxp = 1 << (2 * PmerType::k());
         let mut sorted_kmers: Vec<PmerType> = Vec::with_capacity(maxp);
         for i in 0..maxp {
@@ -214,7 +220,6 @@ lazy_static! {
         for (sort_pos, kmer) in sorted_kmers.into_iter().enumerate() {
             permutation[kmer.to_u64() as usize] = sort_pos;
         }
-
 
         permutation
     };
@@ -302,13 +307,11 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
     println!("Assigning offsets to kmers");
     let mut node_and_offsets = Vec::with_capacity(total_kmers);
     node_and_offsets.resize(total_kmers, (U32_MAX as u32, U32_MAX as u32));
-    
+
     let scatter = crate::scatter::ScatterToVec::new(&mut node_and_offsets[..]);
 
     pool.install(|| {
-        (0..dbg.len())
-        .into_par_iter()
-        .for_each_init(
+        (0..dbg.len()).into_par_iter().for_each_init(
             // Each thread gets a scatter handle to write values from
             || scatter.handle(),
             |handle, node_id| {
@@ -318,7 +321,7 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
                     let index = mphf.try_hash(&kmer).expect("can't find kmer in DBG graph!");
                     handle.write(index as usize, (node_id as u32, offset as u32));
                 }
-            }
+            },
         );
     });
 
@@ -354,10 +357,10 @@ mod test {
     use crate::config;
     use crate::utils;
     use bio::io::fasta;
+    use failure::ResultExt;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::proptest;
-    use failure::ResultExt;
 
     proptest! {
         #![proptest_config(ProptestConfig { cases: 2000, .. ProptestConfig::default()})]
@@ -391,7 +394,6 @@ mod test {
         validate_dbg(&seqs, &index);
         Ok(())
     }
-
 
     #[cfg_attr(feature = "slow_tests", test)]
     fn test_gencode_full_build() -> Result<(), Error> {

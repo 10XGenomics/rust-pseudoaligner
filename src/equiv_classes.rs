@@ -2,8 +2,8 @@
 
 //! Generate equivalence classes for pseudoaligner
 use std::fmt::Debug;
-use std::ops::Deref;
 use std::hash::Hash;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
@@ -11,9 +11,8 @@ use dashmap::DashMap;
 use debruijn::filter::KmerSummarizer;
 use debruijn::Exts;
 
-
 //Equivalence class based implementation
-pub type EqClassIdType = u32 ;
+pub type EqClassIdType = u32;
 pub struct CountFilterEqClass<D: Eq + Hash + Send + Sync + Debug + Clone> {
     min_kmer_obs: usize,
     eq_classes: DashMap<Vec<D>, EqClassIdType>,
@@ -29,7 +28,7 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
         }
     }
 
-    pub fn get_eq_classes(&self) -> Vec<Vec<D>>{
+    pub fn get_eq_classes(&self) -> Vec<Vec<D>> {
         let mut eq_class_vec = Vec::new();
         eq_class_vec.resize(self.get_number_of_eq_classes(), Vec::new());
 
@@ -43,17 +42,17 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
         // consistency property the equivalence classes must be assigned
         // unique ids from 0 to N, with no gaps. This could be violated
         // if theres is a race condition when assigning equivalence class
-        // ids in CountFilterEqClass::summarize below.  panic if this 
+        // ids in CountFilterEqClass::summarize below.  panic if this
         // property doesn't hold.
         eq_ids.sort();
-        for i in 0 .. eq_ids.len() {
+        for i in 0..eq_ids.len() {
             assert_eq!(eq_ids[i], i);
         }
 
         eq_class_vec
     }
 
-    pub fn get_number_of_eq_classes(&self) -> usize{
+    pub fn get_number_of_eq_classes(&self) -> usize {
         self.num_eq_classes.load(Ordering::SeqCst)
     }
 
@@ -62,8 +61,13 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
     }
 }
 
-impl<D: Eq + Ord + Hash + Send + Sync + Debug + Clone> KmerSummarizer<D, EqClassIdType> for CountFilterEqClass<D> {
-    fn summarize<K, F: Iterator<Item = (K, Exts, D)>>(&self, items: F) -> (bool, Exts, EqClassIdType) {
+impl<D: Eq + Ord + Hash + Send + Sync + Debug + Clone> KmerSummarizer<D, EqClassIdType>
+    for CountFilterEqClass<D>
+{
+    fn summarize<K, F: Iterator<Item = (K, Exts, D)>>(
+        &self,
+        items: F,
+    ) -> (bool, Exts, EqClassIdType) {
         let mut all_exts = Exts::empty();
 
         // the ids of the sequences in the equivalence class
@@ -76,7 +80,7 @@ impl<D: Eq + Ord + Hash + Send + Sync + Debug + Clone> KmerSummarizer<D, EqClass
             nobs += 1;
         }
 
-        eq_class.sort();  
+        eq_class.sort();
         eq_class.dedup();
 
         // register the equivalence class and assign it a unique id.

@@ -18,8 +18,8 @@ use failure::Error;
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::equiv_classes::EqClassIdType;
 use crate::config::{LEFT_EXTEND_FRACTION, READ_COVERAGE_THRESHOLD};
+use crate::equiv_classes::EqClassIdType;
 use crate::utils;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -99,7 +99,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
             // from the read in the DBG
             let (mut node_id, mut kmer_offset) = match find_kmer_match(&mut kmer_pos) {
                 None => (None, None),
-                Some((nid, offset)) => (Some(nid), Some(offset))
+                Some((nid, offset)) => (Some(nid), Some(offset)),
             };
 
             // check if we can extend back if there were SNP in every kmer query
