@@ -1,7 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::config::{KmerType, MEM_SIZE, REPORT_ALL_KMER, STRANDED};
@@ -134,6 +134,9 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
     for (i, s) in seqs.iter().enumerate() {
         let i = i as u32;
 
+        // transcripts shorter than k can't be mapped
+        if s.len() < K::k() { continue; }
+
         let (eqclass, bases_aligned) = al.map_read(s).unwrap();
         assert_eq!(s.len(), bases_aligned);
 
@@ -145,13 +148,40 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
                 continue;
             }
 
-            // if the sequences aren't identical, the current string must be the shortest.
+            // if the sequences aren't identical, the current string must be shortest, or
+            // the set of nodes visited by the input string must be a subset of the other sequences
+            // in the equivalence class.
             let shortest = eqclass
                 .iter()
                 .map(|x| seqs[*x as usize].len())
                 .min()
                 .unwrap();
-            assert_eq!(s.len(), shortest);
+
+            if s.len() != shortest {
+
+                let mut path_buf: Vec<usize> = Vec::new();
+
+                use std::iter::FromIterator;
+                al.map_read_to_nodes(s, &mut path_buf).unwrap();
+                let my_nodes: HashSet<usize> = HashSet::from_iter(path_buf.iter().cloned());
+
+                println!("eqclass: {:?}", eqclass);
+                for i in & eqclass {
+                    println!("{}: {}, len:{}", i, al.tx_names[*i as usize], seqs[*i as usize].len());
+                    println!("{:?}", seqs[*i as usize]);
+
+                    
+                    let r = al.map_read_to_nodes(&seqs[*i as usize], &mut path_buf).unwrap();
+                    let other_nodes = HashSet::from_iter(path_buf.iter().cloned());
+                    
+                    println!("r: {:?}", r);
+                    println!("{:?}", path_buf);
+
+                    assert!(my_nodes.is_subset(&other_nodes));
+                    println!("---");
+
+                }
+            }
 
         // debugging
         // println!("--- dup on {}", i);
@@ -327,6 +357,7 @@ mod test {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::proptest;
+    use failure::ResultExt;
 
     proptest! {
         #![proptest_config(ProptestConfig { cases: 2000, .. ProptestConfig::default()})]
@@ -361,13 +392,14 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    #[ignore]
+
+    #[cfg_attr(feature = "slow_tests", test)]
     fn test_gencode_full_build() -> Result<(), Error> {
-        let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa")?;
+        let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";
+        let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa").context(msg)?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
         let _index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, 2)?;
-        //validate_dbg(&seqs, &index);
+        //validate_dbg(&seqs, &_index);
         Ok(())
     }
 }

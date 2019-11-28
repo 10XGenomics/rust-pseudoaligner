@@ -60,8 +60,12 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
         let mut kmer_pos: usize = 0;
         let kmer_length = K::k();
-        let last_kmer_pos = read_length - kmer_length;
 
+        if read_seq.len() < kmer_length {
+            return None;
+        }
+
+        let last_kmer_pos = read_length - kmer_length;
         let mut kmer_lookups = 0;
 
         {
@@ -91,10 +95,9 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                 None
             };
 
-            // extract the first exact matching position of read
-            let (mut node_id, mut kmer_offset) =
-            // get the first match through mphf
-            match find_kmer_match(&mut kmer_pos) {
+            // extract the first exact matching position of a kmer
+            // from the read in the DBG
+            let (mut node_id, mut kmer_offset) = match find_kmer_match(&mut kmer_pos) {
                 None => (None, None),
                 Some((nid, offset)) => (Some(nid), Some(offset))
             };

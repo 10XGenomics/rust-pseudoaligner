@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::io::{self, BufRead, BufReader, BufWriter};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -65,7 +65,7 @@ pub fn read_transcripts(
     let mut tx_to_gene_map = HashMap::new();
     let mut fasta_format = FastaFormat::Unknown;
 
-    info!("Starting reading the Fasta file\n");
+    info!("Reading transcripts from Fasta file");
     for result in reader.records() {
         // obtain record or fail with error
         let record = result?;
@@ -84,13 +84,8 @@ pub fn read_transcripts(
         tx_to_gene_map.insert(tx_id, gene_id);
 
         transcript_counter += 1;
-        if transcript_counter % 100 == 0 {
-            print!("\r Done reading {} sequences", transcript_counter);
-            io::stdout().flush().expect("Could not flush stdout");
-        }
     }
 
-    println!();
     info!(
         "Done reading the Fasta file; Found {} sequences",
         transcript_counter
