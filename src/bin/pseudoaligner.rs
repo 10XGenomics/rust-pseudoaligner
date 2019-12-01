@@ -23,17 +23,18 @@ const USAGE: &'static str = "
 De-bruijn-mapping
 
 Usage:
-  pseudoaligner index -i <index> <ref-fasta>
-  pseudoaligner map -i <index> <reads-fastq>
+  pseudoaligner index [--num-threads=<n>] -i <index> <ref-fasta>
+  pseudoaligner map [--num-threads=<n>] -i <index> <reads-fastq>
   pseudoaligner mappability [-o <outdir>] -i <index>
   pseudoaligner idxstats -i <index>
   pseudoaligner inspect -i <index> -c <counts> <genes>...
   pseudoaligner -h | --help | -v | --version
 
 Options:
-  -o --outdir DIR   Output directory
-  -h --help         Show this screen.
-  -v --version         Show version.
+  -n --num-threads N  Number of worker threads [default: 2]
+  -o --outdir DIR     Output directory
+  -h --help           Show this screen.
+  -v --version        Show version.
 ";
 // -l --long         Long output format (one line per read-transcript mapping)
 
@@ -46,6 +47,7 @@ struct Args {
     arg_genes: Vec<String>,
     arg_reads_fastq: String,
     flag_outdir: Option<String>,
+    flag_num_threads: usize,
 
     cmd_index: bool,
 
@@ -82,7 +84,8 @@ fn main() -> Result<(), Error> {
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map)?;
+        let index =
+            build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, args.flag_num_threads)?;
         info!("Finished building index!");
 
         info!("Writing index to disk");
@@ -95,7 +98,7 @@ fn main() -> Result<(), Error> {
 
         info!("Mapping reads from fastq");
         let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
-        process_reads::<config::KmerType, _>(reads, &index, outdir)?;
+        process_reads::<config::KmerType, _>(reads, &index, outdir, args.flag_num_threads)?;
     } else if args.cmd_mappability {
         info!("Reading index from disk");
         let index = debruijn_mapping::utils::read_obj(args.arg_index)?;
