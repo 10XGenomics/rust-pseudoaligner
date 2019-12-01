@@ -25,7 +25,7 @@ use crate::utils;
 pub struct Pseudoaligner<K: Kmer> {
     pub dbg: DebruijnGraph<K, EqClassIdType>,
     pub eq_classes: Vec<Vec<u32>>,
-    pub(crate) dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
+    pub dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
     pub tx_names: Vec<String>,
     pub tx_gene_mapping: HashMap<String, String>,
 }
