@@ -246,7 +246,10 @@ fn partition_contigs<'a, K: Kmer>(
     let mut bucket_slices = Vec::new();
 
     if contig.len() >= K::k() {
-        let msps = debruijn::msp::simple_scan::<_, PmerType>(K::k(), contig, &PERM, false);
+        // It is safe to always set rc to true when calling simple_scan. See
+        // https://github.com/10XGenomics/rust-debruijn/issues/10
+        // However, we set it to !STRANDED so stranded assays use more buckets.
+        let msps = debruijn::msp::simple_scan::<_, PmerType>(K::k(), contig, &PERM, !STRANDED);
         for msp in msps {
             let bucket_id = msp.bucket();
             let slice = contig.slice(msp.start(), msp.end());
