@@ -138,13 +138,12 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                         // compare base by base
                         if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
+                            // Allowing 2-SNP
+                            seen_snp += 1;
                             if seen_snp > 2 {
                                 premature_break = true;
                                 break;
                             }
-
-                            // Allowing 2-SNP
-                            seen_snp += 1;
                         }
 
                         matched_bases += 1;
@@ -220,13 +219,12 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                         // compare base by base
                         if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
+                            // Allowing 2-SNP
+                            seen_snp += 1;
                             if seen_snp > 2 {
                                 premature_break = true;
                                 break;
                             }
-
-                            // Allowing 2-SNP
-                            seen_snp += 1;
                         }
 
                         matched_bases += 1;
