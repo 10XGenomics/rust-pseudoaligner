@@ -5,7 +5,7 @@ authors = ["Avi Srivastava <avi.sri02@gmail.com>", "Patrick Marks <patrick@10xge
 edition = "2018"
 
 [dependencies]
-bio = "0.29"
+bio = "0.31"
 bio-types = "0.5"
 crossbeam-utils = "0.6"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
@@ -17,7 +17,7 @@ lazy_static = "1.4"
 log = "0.4"
 rayon = "1.0"
 serde = "1.0"
-shardio = "0.5"
+shardio = "0.7"
 pretty_assertions = "0.5.1"
 boomphf = "0.5"
 dashmap = "1.2"
