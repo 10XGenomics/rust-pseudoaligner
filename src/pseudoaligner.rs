@@ -18,7 +18,7 @@ use failure::Error;
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{LEFT_EXTEND_FRACTION, READ_COVERAGE_THRESHOLD};
+use crate::config::{LEFT_EXTEND_FRACTION, READ_COVERAGE_THRESHOLD, DEFAULT_ALLOWED_MISMATCHES};
 use crate::equiv_classes::EqClassIdType;
 use crate::utils;
 
@@ -50,7 +50,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with mismatch = 2
     pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
-      match self.map_read_to_nodes_with_mismatch(read_seq, nodes, 2) {
+      match self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES) {
         Some((read_coverage, _mismatches)) => Some(read_coverage),
         None => None
       }
@@ -367,7 +367,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// eqivalence class and the number of bases aligned on success
     /// or None is no alignment could be found.
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
-      match self.map_read_with_mismatch(read_seq, 2) {
+      match self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES) {
         Some((eq_class, read_coverage, _mismatches)) => {
           Some((eq_class, read_coverage))
         },
