@@ -57,7 +57,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with configurable # of allowed mismatches
-    pub fn map_read_to_nodes_with_mismatch(&self, read_seq: &DnaString, nodes: &mut Vec<usize>, num_mismatch: usize) -> Option<(usize, usize)> {
+    pub fn map_read_to_nodes_with_mismatch(&self, read_seq: &DnaString, nodes: &mut Vec<usize>, allowed_mismatches: usize) -> Option<(usize, usize)> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
         let mut mismatch_count: usize = 0;
@@ -152,7 +152,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                             // Allowing num_mismatch-SNP
                             seen_snp += 1;
-                            if seen_snp > num_mismatch {
+                            if seen_snp > allowed_mismatches {
                                 premature_break = true;
                                 break;
                             }
@@ -236,7 +236,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                             // Allowing num_mismatch-SNP
                             seen_snp += 1;
-                            if seen_snp > num_mismatch {
+                            if seen_snp > allowed_mismatches {
                                 premature_break = true;
                                 break;
                             }
@@ -350,10 +350,10 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// Pseudoalign the `read_seq` to the graph. Returns a tuple of the
     /// eqivalence class, the number of bases aligned on success,
     /// and the number of mismatched bases, or None is no alignment could be found.
-    pub fn map_read_with_mismatch(&self, read_seq: &DnaString, num_mismatch: usize) -> Option<(Vec<u32>, usize, usize)> {
+    pub fn map_read_with_mismatch(&self, read_seq: &DnaString, allowed_mismatches: usize) -> Option<(Vec<u32>, usize, usize)> {
         let mut nodes = Vec::new();
 
-        match self.map_read_to_nodes_with_mismatch(read_seq, &mut nodes, num_mismatch) {
+        match self.map_read_to_nodes_with_mismatch(read_seq, &mut nodes, allowed_mismatches) {
             Some((read_coverage, mismatches)) => {
                 let mut eq_class = Vec::new();
                 self.nodes_to_eq_class(&mut nodes, &mut eq_class);
