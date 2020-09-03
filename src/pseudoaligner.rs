@@ -51,7 +51,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with mismatch = 2
     pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
       match self.map_read_to_nodes_with_mismatch(read_seq, nodes, 2) {
-        Some((read_coverage, mismatches)) => Some(read_coverage),
+        Some((read_coverage, _mismatches)) => Some(read_coverage),
         None => None
       }
     }
@@ -60,6 +60,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     pub fn map_read_to_nodes_with_mismatch(&self, read_seq: &DnaString, nodes: &mut Vec<usize>, num_mismatch: usize) -> Option<(usize, usize)> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
+        let mut mismatch_count: usize = 0;
 
         // We're filling out nodes
         nodes.clear();
@@ -146,6 +147,9 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                         // compare base by base
                         if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
+                            // Record mismatch
+                            mismatch_count += 1;
+
                             // Allowing num_mismatch-SNP
                             seen_snp += 1;
                             if seen_snp > num_mismatch {
@@ -227,6 +231,9 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                         // compare base by base
                         if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
+                            // Record mismatch
+                            mismatch_count += 1;
+
                             // Allowing num_mismatch-SNP
                             seen_snp += 1;
                             if seen_snp > num_mismatch {
@@ -279,7 +286,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                             None => break,
                             Some((nid, offset)) => {
                                 node_id = Some(nid);
-                                kmer_offset = Some(offset);~
+                                kmer_offset = Some(offset);
                             }
                         };
                     }
@@ -299,7 +306,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
             None
         } else {
             //println!("lookups: {} -- cov: {}", kmer_lookups, read_coverage);
-            Some(read_coverage)
+            Some((read_coverage, mismatch_count))
         }
     }
 
@@ -361,7 +368,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// or None is no alignment could be found.
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
       match self.map_read_with_mismatch(read_seq, 2) {
-        Some((eq_class, read_coverage, mismatches)) => {
+        Some((eq_class, read_coverage, _mismatches)) => {
           Some((eq_class, read_coverage))
         },
         None => None,
