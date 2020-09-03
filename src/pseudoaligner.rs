@@ -348,8 +348,8 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     }
 
     /// Pseudoalign the `read_seq` to the graph. Returns a tuple of the
-    /// eqivalence class and the number of bases aligned on success
-    /// or None is no alignment could be found.
+    /// eqivalence class, the number of bases aligned on success,
+    /// and the number of mismatched bases, or None is no alignment could be found.
     pub fn map_read_with_mismatch(&self, read_seq: &DnaString, num_mismatch: usize) -> Option<(Vec<u32>, usize, usize)> {
         let mut nodes = Vec::new();
 
@@ -368,9 +368,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// or None is no alignment could be found.
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
       match self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES) {
-        Some((eq_class, read_coverage, _mismatches)) => {
-          Some((eq_class, read_coverage))
-        },
+        Some((eq_class, read_coverage, _mismatches)) => Some((eq_class, read_coverage)),
         None => None,
       }
     }
