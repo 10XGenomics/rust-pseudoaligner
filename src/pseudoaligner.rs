@@ -48,8 +48,16 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
         }
     }
 
-    /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to
+    /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with mismatch = 2
     pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
+      match self.map_read_to_nodes_with_mismatch(read_seq, nodes, 2) {
+        Some((read_coverage, mismatches)) => Some(read_coverage),
+        None => None
+      }
+    }
+
+    /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with configurable # of allowed mismatches
+    pub fn map_read_to_nodes_with_mismatch(&self, read_seq: &DnaString, nodes: &mut Vec<usize>, num_mismatch: usize) -> Option<(usize, usize)> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
 
@@ -138,9 +146,9 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                         // compare base by base
                         if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                            // Allowing 2-SNP
+                            // Allowing num_mismatch-SNP
                             seen_snp += 1;
-                            if seen_snp > 2 {
+                            if seen_snp > num_mismatch {
                                 premature_break = true;
                                 break;
                             }
@@ -219,9 +227,9 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
                         // compare base by base
                         if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                            // Allowing 2-SNP
+                            // Allowing num_mismatch-SNP
                             seen_snp += 1;
-                            if seen_snp > 2 {
+                            if seen_snp > num_mismatch {
                                 premature_break = true;
                                 break;
                             }
@@ -271,7 +279,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
                             None => break,
                             Some((nid, offset)) => {
                                 node_id = Some(nid);
-                                kmer_offset = Some(offset);
+                                kmer_offset = Some(offset);~
                             }
                         };
                     }
@@ -335,17 +343,29 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// Pseudoalign the `read_seq` to the graph. Returns a tuple of the
     /// eqivalence class and the number of bases aligned on success
     /// or None is no alignment could be found.
-    pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
+    pub fn map_read_with_mismatch(&self, read_seq: &DnaString, num_mismatch: usize) -> Option<(Vec<u32>, usize, usize)> {
         let mut nodes = Vec::new();
 
-        match self.map_read_to_nodes(read_seq, &mut nodes) {
-            Some(read_coverage) => {
+        match self.map_read_to_nodes_with_mismatch(read_seq, &mut nodes, num_mismatch) {
+            Some((read_coverage, mismatches)) => {
                 let mut eq_class = Vec::new();
                 self.nodes_to_eq_class(&mut nodes, &mut eq_class);
-                Some((eq_class, read_coverage))
+                Some((eq_class, read_coverage, mismatches))
             }
             None => None,
         }
+    }
+
+    /// Pseudoalign the `read_seq` to the graph with # mismatches = 2. Returns a tuple of the
+    /// eqivalence class and the number of bases aligned on success
+    /// or None is no alignment could be found.
+    pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
+      match self.map_read_with_mismatch(read_seq, 2) {
+        Some((eq_class, read_coverage, mismatches)) => {
+          Some((eq_class, read_coverage))
+        },
+        None => None,
+      }
     }
 }
 
