@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::config::{KmerType, MEM_SIZE, REPORT_ALL_KMER, STRANDED};
+use crate::config::{MEM_SIZE, REPORT_ALL_KMER, STRANDED};
 use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap};
 use debruijn;
 use debruijn::compression::*;
@@ -44,7 +44,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
     let mut buckets: Vec<_> = seqs
         .iter()
         .enumerate()
-        .flat_map(|(id, seq)| partition_contigs::<KmerType>(seq, id as u32))
+        .flat_map(|(id, seq)| partition_contigs::<K>(seq, id as u32))
         .collect();
 
     pool.install(|| {
@@ -357,7 +357,6 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::config;
     use crate::utils;
     use anyhow::Context;
     use bio::io::fasta;
@@ -390,20 +389,39 @@ mod test {
     }
 
     #[test]
-    fn test_gencode_small_build() -> Result<(), Error> {
+    fn test_gencode_small_build_20() -> Result<(), Error> {
         let fasta = fasta::Reader::from_file("test/gencode_small.fa")?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, 2)?;
+        let index = build_index::<kmer::Kmer20>(&seqs, &tx_names, &tx_gene_map, 2)?;
+        validate_dbg(&seqs, &index);
+        Ok(())
+    }
+
+    #[test]
+    fn test_gencode_small_build_64() -> Result<(), Error> {
+        let fasta = fasta::Reader::from_file("test/gencode_small.fa")?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
+        let index = build_index::<kmer::Kmer64>(&seqs, &tx_names, &tx_gene_map, 2)?;
         validate_dbg(&seqs, &index);
         Ok(())
     }
 
     #[cfg_attr(feature = "slow_tests", test)]
-    fn test_gencode_full_build() -> Result<(), Error> {
+    fn test_gencode_full_build_20() -> Result<(), Error> {
         let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";
         let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa").context(msg)?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let index = build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, 2)?;
+        let index = build_index::<kmer::Kmer20>(&seqs, &tx_names, &tx_gene_map, 2)?;
+        validate_dbg(&seqs, &index);
+        Ok(())
+    }
+
+    #[cfg_attr(feature = "slow_tests", test)]
+    fn test_gencode_full_build_64() -> Result<(), Error> {
+        let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";
+        let fasta = fasta::Reader::from_file("test/gencode.v28.transcripts.fa").context(msg)?;
+        let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
+        let index = build_index::<kmer::Kmer64>(&seqs, &tx_names, &tx_gene_map, 2)?;
         validate_dbg(&seqs, &index);
         Ok(())
     }

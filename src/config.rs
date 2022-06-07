@@ -1,7 +1,5 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
-use debruijn::kmer;
-
 // transcriptome fasta header formats
 pub enum FastaFormat {
     Unknown,
@@ -20,8 +18,6 @@ pub const LEFT_EXTEND_FRACTION: f64 = 0.2;
 pub const DEFAULT_ALLOWED_MISMATCHES: usize = 2;
 
 pub const U32_MAX: usize = u32::max_value() as usize;
-
-pub type KmerType = kmer::Kmer20;
 
 // Transcriptome mappability
 pub const MAPPABILITY_COUNTS_LEN: usize = 11;

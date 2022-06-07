@@ -1,5 +1,6 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
+use debruijn::kmer;
 use log::info;
 use serde::Deserialize;
 
@@ -9,13 +10,13 @@ use docopt::Docopt;
 use std::{env, fs};
 use std::{path::PathBuf, str};
 
+use debruijn_mapping::utils;
 use debruijn_mapping::{
     build_index::build_index,
     mappability::{analyze_graph, write_mappability_tsv},
     pseudoaligner,
     pseudoaligner::process_reads,
 };
-use debruijn_mapping::{config, utils};
 
 const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
 const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -31,6 +32,7 @@ Usage:
   pseudoaligner -h | --help | -v | --version
 
 Options:
+  -k --kmer-size      Kmer size to use - only 20 or 64 currently supported [default: 20].
   -n --num-threads N  Number of worker threads [default: 2]
   -o --outdir DIR     Output directory
   -h --help           Show this screen.
@@ -48,6 +50,7 @@ struct Args {
     arg_reads_fastq: String,
     flag_outdir: Option<String>,
     flag_num_threads: usize,
+    flag_kmer_size: usize,
 
     cmd_index: bool,
 
@@ -58,6 +61,11 @@ struct Args {
     // flag_long: bool,
     flag_version: bool,
     flag_v: bool,
+}
+
+enum KmerSetting {
+    K20,
+    K64,
 }
 
 fn main() -> Result<(), Error> {
@@ -80,44 +88,121 @@ fn main() -> Result<(), Error> {
     };
     fs::create_dir_all(&outdir)?;
 
+    let km = match args.flag_kmer_size {
+        20 => KmerSetting::K20,
+        64 => KmerSetting::K64,
+        v => {
+            println!(
+                "Kmer size = {} is not supported. Set kmer size to 20 or 64",
+                v
+            );
+            return Ok(());
+        }
+    };
+
     if args.cmd_index {
         info!("Building index from fasta");
         let fasta = fasta::Reader::from_file(args.arg_ref_fasta)?;
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
-        let index =
-            build_index::<config::KmerType>(&seqs, &tx_names, &tx_gene_map, args.flag_num_threads)?;
-        info!("Finished building index!");
 
-        info!("Writing index to disk");
-        utils::write_obj(&index, args.arg_index)?;
-        info!("Finished writing index!");
+        match km {
+            KmerSetting::K20 => {
+                let index = build_index::<kmer::Kmer20>(
+                    &seqs,
+                    &tx_names,
+                    &tx_gene_map,
+                    args.flag_num_threads,
+                )?;
+                info!("Finished building index!");
+
+                info!("Writing index to disk");
+                utils::write_obj(&index, args.arg_index)?;
+                info!("Finished writing index!");
+            }
+            KmerSetting::K64 => {
+                let index = build_index::<kmer::Kmer64>(
+                    &seqs,
+                    &tx_names,
+                    &tx_gene_map,
+                    args.flag_num_threads,
+                )?;
+                info!("Finished building index!");
+
+                info!("Writing index to disk");
+                utils::write_obj(&index, args.arg_index)?;
+                info!("Finished writing index!");
+            }
+        }
     } else if args.cmd_map {
-        info!("Reading index from disk");
-        let index = utils::read_obj(args.arg_index)?;
-        info!("Finished reading index!");
+        match km {
+            KmerSetting::K20 => {
+                info!("Reading index from disk");
+                let index = utils::read_obj(args.arg_index)?;
+                info!("Finished reading index!");
 
-        info!("Mapping reads from fastq");
-        let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
-        process_reads::<config::KmerType, _>(reads, &index, outdir, args.flag_num_threads)?;
+                info!("Mapping reads from fastq");
+                let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
+                process_reads::<kmer::Kmer20, _>(reads, &index, outdir, args.flag_num_threads)?;
+            }
+            KmerSetting::K64 => {
+                info!("Reading index from disk");
+                let index = utils::read_obj(args.arg_index)?;
+                info!("Finished reading index!");
+
+                info!("Mapping reads from fastq");
+                let reads = fastq::Reader::from_file(args.arg_reads_fastq)?;
+                process_reads::<kmer::Kmer64, _>(reads, &index, outdir, args.flag_num_threads)?;
+            }
+        }
     } else if args.cmd_mappability {
-        info!("Reading index from disk");
-        let index = debruijn_mapping::utils::read_obj(args.arg_index)?;
-        info!("Finished reading index!");
-        info!("Analyzing de Bruijn graph");
-        let records = analyze_graph::<config::KmerType>(&index)?;
-        info!("Finished analyzing!");
-        info!("{} transcripts total", records.len());
-        write_mappability_tsv(records, outdir)?;
+        match km {
+            KmerSetting::K20 => {
+                info!("Reading index from disk");
+                let index = debruijn_mapping::utils::read_obj(args.arg_index)?;
+                info!("Finished reading index!");
+                info!("Analyzing de Bruijn graph");
+                let records = analyze_graph::<kmer::Kmer20>(&index)?;
+                info!("Finished analyzing!");
+                info!("{} transcripts total", records.len());
+                write_mappability_tsv(records, outdir)?;
+            }
+            KmerSetting::K64 => {
+                info!("Reading index from disk");
+                let index = debruijn_mapping::utils::read_obj(args.arg_index)?;
+                info!("Finished reading index!");
+                info!("Analyzing de Bruijn graph");
+                let records = analyze_graph::<kmer::Kmer64>(&index)?;
+                info!("Finished analyzing!");
+                info!("{} transcripts total", records.len());
+                write_mappability_tsv(records, outdir)?;
+            }
+        }
     } else if args.cmd_idxstats {
-        let index: pseudoaligner::Pseudoaligner<config::KmerType> =
-            utils::read_obj(args.arg_index)?;
+        match km {
+            KmerSetting::K20 => {
+                let index: pseudoaligner::Pseudoaligner<kmer::Kmer20> =
+                    utils::read_obj(args.arg_index)?;
 
-        use debruijn::Mer;
+                use debruijn::Mer;
 
-        for e in index.dbg.iter_nodes() {
-            let eqid = e.data();
-            let eq = &index.eq_classes[*eqid as usize];
-            println!("{}\t{}\t{}", e.node_id, e.sequence().len(), eq.len());
+                for e in index.dbg.iter_nodes() {
+                    let eqid = e.data();
+                    let eq = &index.eq_classes[*eqid as usize];
+                    println!("{}\t{}\t{}", e.node_id, e.sequence().len(), eq.len());
+                }
+            }
+            KmerSetting::K64 => {
+                let index: pseudoaligner::Pseudoaligner<kmer::Kmer64> =
+                    utils::read_obj(args.arg_index)?;
+
+                use debruijn::Mer;
+
+                for e in index.dbg.iter_nodes() {
+                    let eqid = e.data();
+                    let eq = &index.eq_classes[*eqid as usize];
+                    println!("{}\t{}\t{}", e.node_id, e.sequence().len(), eq.len());
+                }
+            }
         }
     }
 
