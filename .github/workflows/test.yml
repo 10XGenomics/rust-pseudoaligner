@@ -8,11 +8,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.55.0
+          toolchain: 1.61.0
           default: true
           components: rustfmt, clippy
       - name: Checkout Git repository
