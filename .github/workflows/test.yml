@@ -1,4 +1,4 @@
-name: Run tests
+name: Test
 
 on:
   pull_request:
@@ -6,49 +6,52 @@ on:
     branches:
       - master
 
+permissions:
+  contents: read
+  # Write permissions are required in order to produce annotations.
+  checks: write
+
 jobs:
-  test:
+  rust:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.61.0
-          default: true
           components: rustfmt, clippy
-      - name: Checkout Git repository
+          default: true
+      - name: Checkout git repository
         uses: actions/checkout@master
-      - name: Cache cargo registry
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/registry
-          key: ${{runner.os}}-cargo-registry-${{hashFiles('**/Cargo.lock')}}
-      - name: Cache cargo index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: ${{runner.os}}-cargo-index-${{hashFiles('**/Cargo.lock')}}
-      - name: Cache cargo build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{runner.os}}-cargo-build-target-${{hashFiles('**/Cargo.lock')}}
       - name: Check Rust formatting
         run: cargo fmt -- --check
-      - name: lint with clippy
-        uses: actions-rs/clippy-check@v1
+      - name: Install cargo-deny
+        run: |
+          wget https://github.com/EmbarkStudios/cargo-deny/releases/download/0.12.1/cargo-deny-0.12.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xvf cargo-deny-0.12.1-x86_64-unknown-linux-musl.tar.gz
+          mkdir -p ~/bin/
+          cp cargo-deny-0.12.1-x86_64-unknown-linux-musl/cargo-deny ~/bin/
+          rm -r cargo-deny-*
+          echo "$HOME/bin" >> $GITHUB_PATH
+      - name: Deny duplicate dependencies and check licenses
+        run: cargo deny --locked check
+      - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # TODO: re-enable some the -A lints below once we're clean on other
+          # more important ones.
           args: |
-            --all-targets --
-            -W clippy::wildcard_imports
-            -W clippy::redundant_closure_for_method_calls
-            -W clippy::enum_glob_use
-            -A clippy::float_cmp
-            -D clippy::unused_io_amount
-            -W future_incompatible
-            -W nonstandard_style
-            -W rust_2018_compatibility
-            -W rust_2021_compatibility
-            -W unused
+           --all-features --all-targets --locked --release --
+           -D clippy::perf
+           -D clippy::style
+           -D clippy::wildcard_imports
+           -W future_incompatible
+           -W nonstandard_style
+           -W rust_2018_compatibility
+           -W rust_2021_compatibility
+           -F clippy::unused_io_amount
+           -D clippy::redundant_closure_for_method_calls
+           -A clippy::comparison_chain
+      - name: Build tests
+        run: cargo test --no-run --frozen --release
       - name: Run Rust tests
-        run: cargo test --release
+        run: cargo test --frozen --release -- --nocapture
