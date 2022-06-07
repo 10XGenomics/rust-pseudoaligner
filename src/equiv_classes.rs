@@ -23,7 +23,7 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
     pub fn new(min_kmer_obs: usize) -> CountFilterEqClass<D> {
         CountFilterEqClass {
             min_kmer_obs: min_kmer_obs,
-            eq_classes: DashMap::<Vec<D>, EqClassIdType>::new(4),
+            eq_classes: DashMap::<Vec<D>, EqClassIdType>::with_shard_amount(4),
             num_eq_classes: AtomicUsize::new(0),
         }
     }
@@ -86,9 +86,10 @@ impl<D: Eq + Ord + Hash + Send + Sync + Debug + Clone> KmerSummarizer<D, EqClass
         // register the equivalence class and assign it a unique id.
         // IDs must be sequential from 0 to N. This must be an atomic operation.
         // The correctness of the eqclass_ids is checked above int get_eq_classes.
-        let eq_ref = self.eq_classes.get_or_insert_with(&eq_class, || {
-            self.num_eq_classes.fetch_add(1, Ordering::SeqCst) as u32
-        });
+        let eq_ref = self
+            .eq_classes
+            .entry(eq_class)
+            .or_insert_with(|| self.num_eq_classes.fetch_add(1, Ordering::SeqCst) as u32);
 
         let eq_id = eq_ref.deref().clone();
         (nobs as usize >= self.min_kmer_obs, all_exts, eq_id)
