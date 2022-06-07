@@ -8,8 +8,8 @@ use std::io::{self, BufRead, BufReader, BufWriter};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use anyhow::{self, Error};
 use bincode::{self, deserialize_from, serialize_into};
-use failure::{self, Error};
 use flate2::read::MultiGzDecoder;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -57,7 +57,7 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<dyn BufRead>, Error> {
 }
 
 pub fn read_transcripts(
-    reader: fasta::Reader<File>,
+    reader: fasta::Reader<BufReader<File>>,
 ) -> Result<(Vec<DnaString>, Vec<String>, HashMap<String, String>), Error> {
     let mut seqs = Vec::new();
     let mut transcript_counter = 0;
@@ -109,7 +109,7 @@ pub fn detect_fasta_format(record: &fasta::Record) -> Result<FastaFormat, Error>
     } else if desc_tokens.len() == 5 {
         return Ok(FastaFormat::Ensembl);
     }
-    Err(failure::err_msg("Failed to detect FASTA header format."))
+    anyhow::bail!("Failed to detect FASTA header format.")
 }
 
 pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: &FastaFormat) -> (String, String) {
@@ -143,9 +143,9 @@ pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: &FastaFormat) ->
     }
 }
 
-pub fn get_next_record<R: io::Read>(
+pub fn get_next_record<R: io::BufRead>(
     reader: &Arc<Mutex<fastq::Records<R>>>,
-) -> Option<Result<fastq::Record, io::Error>> {
+) -> Option<Result<fastq::Record, bio::io::fastq::Error>> {
     let mut lock = reader.lock().unwrap();
     lock.next()
 }

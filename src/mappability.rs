@@ -1,7 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
+use anyhow::Error;
 use debruijn::Kmer;
-use failure::Error;
 use itertools::Itertools;
 use std::io::Write;
 use std::path::Path;
@@ -117,7 +117,7 @@ pub fn write_mappability_tsv<P: AsRef<Path>>(
 //     }
 // }
 
-pub fn analyze_graph<K: Kmer>(index: &Pseudoaligner<K>) -> Result<(Vec<MappabilityRecord>), Error> {
+pub fn analyze_graph<K: Kmer>(index: &Pseudoaligner<K>) -> Result<Vec<MappabilityRecord>, Error> {
     let mut records = Vec::new();
 
     // Make records

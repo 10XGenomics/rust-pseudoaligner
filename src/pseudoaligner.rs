@@ -12,13 +12,13 @@ use boomphf::hashmap::NoKeyBoomHashMap;
 use crossbeam_utils::thread::scope;
 use debruijn::dna_string::DnaString;
 
+use anyhow::Error;
 use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
-use failure::Error;
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{LEFT_EXTEND_FRACTION, READ_COVERAGE_THRESHOLD, DEFAULT_ALLOWED_MISMATCHES};
+use crate::config::{DEFAULT_ALLOWED_MISMATCHES, LEFT_EXTEND_FRACTION, READ_COVERAGE_THRESHOLD};
 use crate::equiv_classes::EqClassIdType;
 use crate::utils;
 
@@ -50,14 +50,19 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with mismatch = 2
     pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
-      match self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES) {
-        Some((read_coverage, _mismatches)) => Some(read_coverage),
-        None => None
-      }
+        match self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES) {
+            Some((read_coverage, _mismatches)) => Some(read_coverage),
+            None => None,
+        }
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with configurable # of allowed mismatches
-    pub fn map_read_to_nodes_with_mismatch(&self, read_seq: &DnaString, nodes: &mut Vec<usize>, allowed_mismatches: usize) -> Option<(usize, usize)> {
+    pub fn map_read_to_nodes_with_mismatch(
+        &self,
+        read_seq: &DnaString,
+        nodes: &mut Vec<usize>,
+        allowed_mismatches: usize,
+    ) -> Option<(usize, usize)> {
         let read_length = read_seq.len();
         let mut read_coverage: usize = 0;
         let mut mismatch_count: usize = 0;
@@ -350,7 +355,11 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// Pseudoalign the `read_seq` to the graph. Returns a tuple of the
     /// eqivalence class, the number of bases aligned on success,
     /// and the number of mismatched bases, or None is no alignment could be found.
-    pub fn map_read_with_mismatch(&self, read_seq: &DnaString, allowed_mismatches: usize) -> Option<(Vec<u32>, usize, usize)> {
+    pub fn map_read_with_mismatch(
+        &self,
+        read_seq: &DnaString,
+        allowed_mismatches: usize,
+    ) -> Option<(Vec<u32>, usize, usize)> {
         let mut nodes = Vec::new();
 
         match self.map_read_to_nodes_with_mismatch(read_seq, &mut nodes, allowed_mismatches) {
@@ -367,10 +376,10 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// eqivalence class and the number of bases aligned on success
     /// or None is no alignment could be found.
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
-      match self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES) {
-        Some((eq_class, read_coverage, _mismatches)) => Some((eq_class, read_coverage)),
-        None => None,
-      }
+        match self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES) {
+            Some((eq_class, read_coverage, _mismatches)) => Some((eq_class, read_coverage)),
+            None => None,
+        }
     }
 }
 
@@ -408,7 +417,7 @@ pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
 }
 
 pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
-    reader: fastq::Reader<File>,
+    reader: fastq::Reader<io::BufReader<File>>,
     index: &Pseudoaligner<K>,
     outdir: P,
     num_threads: usize,
