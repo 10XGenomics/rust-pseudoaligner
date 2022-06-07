@@ -18,9 +18,9 @@ use debruijn_mapping::{
     utils,
 };
 
-const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
-const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
-const USAGE: &'static str = "
+const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+const USAGE: &str = "
 De-bruijn-mapping
 
 Usage:

@@ -27,7 +27,7 @@ use crate::utils::open_file;
 //    fn update_counts(self, kmer_count, ids), Option(Gene_tx_map))
 //      - (if gene we'll need to make a gene vector instead of color)
 //    fn fraction_unique(self) -> f64
-const MAPPABILITY_HEADER_STRING: &'static str =
+const MAPPABILITY_HEADER_STRING: &str =
     "tx_name\tgene_name\ttx_kmer_count\tfrac_kmer_unique_tx\tfrac_kmer_unique_gene\n";
 
 #[derive(Debug)]
@@ -99,7 +99,7 @@ pub fn write_mappability_tsv<P: AsRef<Path>>(
     outfile.write_all(MAPPABILITY_HEADER_STRING.as_bytes())?;
 
     for record in records {
-        write!(outfile, "{}\n", record.to_tsv())?;
+        writeln!(outfile, "{}", record.to_tsv())?;
     }
 
     Ok(())
@@ -123,7 +123,7 @@ pub fn analyze_graph<K: Kmer>(index: &Pseudoaligner<K>) -> Result<Vec<Mappabilit
     // Make records
     for tx_name in index.tx_names.iter() {
         let gene_name = index.tx_gene_mapping.get(tx_name).unwrap();
-        records.push(MappabilityRecord::new(&tx_name, &gene_name));
+        records.push(MappabilityRecord::new(tx_name, gene_name));
     }
 
     // Iterate through graph
@@ -139,7 +139,7 @@ pub fn analyze_graph<K: Kmer>(index: &Pseudoaligner<K>) -> Result<Vec<Mappabilit
         for &tx_id in eq_class {
             let tx_name = &index.tx_names[tx_id as usize];
             let gene_name = index.tx_gene_mapping.get(tx_name);
-            gene_names.push(gene_name.clone())
+            gene_names.push(gene_name)
         }
         let unique_genes: Vec<_> = gene_names.iter().unique().collect();
         let num_genes = unique_genes.len();

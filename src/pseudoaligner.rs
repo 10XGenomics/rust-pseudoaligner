@@ -50,10 +50,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with mismatch = 2
     pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
-        match self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES) {
-            Some((read_coverage, _mismatches)) => Some(read_coverage),
-            None => None,
-        }
+        self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES).map(|(read_coverage, _mismatches)| read_coverage)
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with configurable # of allowed mismatches
@@ -299,7 +296,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
             } //end-if
         }
 
-        if nodes.len() == 0 {
+        if nodes.is_empty() {
             if read_coverage != 0 {
                 panic!(
                     "Different read coverage {:?} than num of eqclasses {:?}",
@@ -320,7 +317,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     pub fn nodes_to_eq_class(&self, nodes: &mut Vec<usize>, eq_class: &mut Vec<u32>) {
         eq_class.clear();
 
-        if nodes.len() == 0 {
+        if nodes.is_empty() {
             return;
         }
 
@@ -376,10 +373,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// eqivalence class and the number of bases aligned on success
     /// or None is no alignment could be found.
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
-        match self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES) {
-            Some((eq_class, read_coverage, _mismatches)) => Some((eq_class, read_coverage)),
-            None => None,
-        }
+        self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES).map(|(eq_class, read_coverage, _mismatches)| (eq_class, read_coverage))
     }
 }
 
@@ -585,8 +579,8 @@ mod test {
             mut v2 in vec(0..100usize, 0..5000usize),
         ) {
 
-            v1.sort(); v1.dedup();
-            v2.sort(); v2.dedup();
+            v1.sort_unstable(); v1.dedup();
+            v2.sort_unstable(); v2.dedup();
             test_intersect(&v1, &v2);
             test_intersect(&v2, &v1);
         }

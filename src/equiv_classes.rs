@@ -22,7 +22,7 @@ pub struct CountFilterEqClass<D: Eq + Hash + Send + Sync + Debug + Clone> {
 impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
     pub fn new(min_kmer_obs: usize) -> CountFilterEqClass<D> {
         CountFilterEqClass {
-            min_kmer_obs: min_kmer_obs,
+            min_kmer_obs,
             eq_classes: DashMap::<Vec<D>, EqClassIdType>::with_shard_amount(4),
             num_eq_classes: AtomicUsize::new(0),
         }
@@ -44,7 +44,7 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
         // if theres is a race condition when assigning equivalence class
         // ids in CountFilterEqClass::summarize below.  panic if this
         // property doesn't hold.
-        eq_ids.sort();
+        eq_ids.sort_unstable();
         for i in 0..eq_ids.len() {
             assert_eq!(eq_ids[i], i);
         }
@@ -91,7 +91,7 @@ impl<D: Eq + Ord + Hash + Send + Sync + Debug + Clone> KmerSummarizer<D, EqClass
             .entry(eq_class)
             .or_insert_with(|| self.num_eq_classes.fetch_add(1, Ordering::SeqCst) as u32);
 
-        let eq_id = eq_ref.deref().clone();
+        let eq_id = *eq_ref.deref();
         (nobs as usize >= self.min_kmer_obs, all_exts, eq_id)
     }
 }
