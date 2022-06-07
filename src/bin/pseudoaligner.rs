@@ -3,9 +3,9 @@
 use log::info;
 use serde::Deserialize;
 
+use anyhow::Error;
 use bio::io::{fasta, fastq};
 use docopt::Docopt;
-use failure::Error;
 use std::{env, fs};
 use std::{path::PathBuf, str};
 

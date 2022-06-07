@@ -5,26 +5,26 @@ authors = ["Avi Srivastava <avi.sri02@gmail.com>", "Patrick Marks <patrick@10xge
 edition = "2018"
 
 [dependencies]
-bio = "0.31"
+bio = ">=0.35"
 bio-types = "0.5"
 crossbeam-utils = "0.6"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 docopt = "1.0"
-failure = "0.1"
+anyhow = "1"
 flate2 = "1.0"
 itertools = "0.7"
 lazy_static = "1.4"
 log = "0.4"
 rayon = "1.0"
 serde = "1.0"
-pretty_assertions = "0.5.1"
+pretty_assertions = "1.2"
 boomphf = "0.5"
 dashmap = "1.2"
 bincode = "1.2"
 pretty_env_logger = "0.3"
 
 [dependencies.smallvec]
-version = "0.6"
+version = "1.8"
 features = ["serde"]
 
 [dev-dependencies.proptest]
