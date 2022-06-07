@@ -20,9 +20,6 @@ notice = "warn"
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    # TODO: update regex crate.  Currently depended
-    # on (transitively) by pretty_env_logger.
-    "RUSTSEC-2022-0013"
 ]
 
 # This section is considered when running `cargo deny check licenses`
