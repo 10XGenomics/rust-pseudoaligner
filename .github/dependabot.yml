@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: weekly
+  open-pull-requests-limit: 10
+  reviewers:
+  - pmarks
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: weekly
+  reviewers:
+  - pmarks

@@ -163,7 +163,6 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
             if s.len() != shortest {
                 let mut path_buf: Vec<usize> = Vec::new();
 
-                use std::iter::FromIterator;
                 al.map_read_to_nodes(s, &mut path_buf).unwrap();
                 let my_nodes: HashSet<usize> = HashSet::from_iter(path_buf.iter().cloned());
 
