@@ -22,19 +22,18 @@ pub struct CountFilterEqClass<D: Eq + Hash + Send + Sync + Debug + Clone> {
 impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
     pub fn new(min_kmer_obs: usize) -> CountFilterEqClass<D> {
         CountFilterEqClass {
-            min_kmer_obs: min_kmer_obs,
-            eq_classes: DashMap::<Vec<D>, EqClassIdType>::new(4),
+            min_kmer_obs,
+            eq_classes: DashMap::<Vec<D>, EqClassIdType>::with_shard_amount(4),
             num_eq_classes: AtomicUsize::new(0),
         }
     }
 
     pub fn get_eq_classes(&self) -> Vec<Vec<D>> {
-        let mut eq_class_vec = Vec::new();
-        eq_class_vec.resize(self.get_number_of_eq_classes(), Vec::new());
+        let mut eq_class_vec = vec![Vec::new(); self.get_number_of_eq_classes()];
 
-        let mut eq_ids = Vec::new();
+        let mut eq_ids = Vec::with_capacity(eq_class_vec.len());
 
-        for item in self.eq_classes.iter() {
+        for item in &self.eq_classes {
             eq_class_vec[*item.value() as usize] = item.key().clone();
             eq_ids.push(*item.value() as usize)
         }
@@ -44,9 +43,9 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
         // if theres is a race condition when assigning equivalence class
         // ids in CountFilterEqClass::summarize below.  panic if this
         // property doesn't hold.
-        eq_ids.sort();
-        for i in 0..eq_ids.len() {
-            assert_eq!(eq_ids[i], i);
+        eq_ids.sort_unstable();
+        for (i, id) in eq_ids.into_iter().enumerate() {
+            assert_eq!(id, i);
         }
 
         eq_class_vec
@@ -86,11 +85,12 @@ impl<D: Eq + Ord + Hash + Send + Sync + Debug + Clone> KmerSummarizer<D, EqClass
         // register the equivalence class and assign it a unique id.
         // IDs must be sequential from 0 to N. This must be an atomic operation.
         // The correctness of the eqclass_ids is checked above int get_eq_classes.
-        let eq_ref = self.eq_classes.get_or_insert_with(&eq_class, || {
-            self.num_eq_classes.fetch_add(1, Ordering::SeqCst) as u32
-        });
+        let eq_ref = self
+            .eq_classes
+            .entry(eq_class)
+            .or_insert_with(|| self.num_eq_classes.fetch_add(1, Ordering::SeqCst) as u32);
 
-        let eq_id = eq_ref.deref().clone();
+        let eq_id = *eq_ref.deref();
         (nobs as usize >= self.min_kmer_obs, all_exts, eq_id)
     }
 }

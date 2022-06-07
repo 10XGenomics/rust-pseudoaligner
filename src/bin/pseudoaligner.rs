@@ -10,17 +10,17 @@ use docopt::Docopt;
 use std::{env, fs};
 use std::{path::PathBuf, str};
 
-use debruijn_mapping::utils;
 use debruijn_mapping::{
     build_index::build_index,
     mappability::{analyze_graph, write_mappability_tsv},
     pseudoaligner,
     pseudoaligner::process_reads,
+    utils,
 };
 
-const PKG_NAME: &'static str = env!("CARGO_PKG_NAME");
-const PKG_VERSION: &'static str = env!("CARGO_PKG_VERSION");
-const USAGE: &'static str = "
+const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+const USAGE: &str = "
 De-bruijn-mapping
 
 Usage:

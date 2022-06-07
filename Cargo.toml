@@ -1,13 +1,13 @@
 [package]
 name = "debruijn_mapping"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Avi Srivastava <avi.sri02@gmail.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 bio = ">=0.35"
-bio-types = "0.12"
-crossbeam-utils = "0.6"
+bio-types = ">=0.12"
+crossbeam-utils = ">=0.7"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 docopt = "1.0"
 anyhow = "1"
@@ -17,18 +17,17 @@ lazy_static = "1.4"
 log = "0.4"
 rayon = "1.0"
 serde = "1.0"
-pretty_assertions = "1.2"
-boomphf = "0.5"
-dashmap = "1.2"
+boomphf = ">=0.5"
+dashmap = "5"
 bincode = "1.2"
-pretty_env_logger = "0.3"
+pretty_env_logger = "0.4"
 
 [dependencies.smallvec]
 version = "1.8"
 features = ["serde"]
 
 [dev-dependencies.proptest]
-version = "0.9"
+version = "1"
 default-features = false
 # Enable all default features not known to break code coverage builds
 features = ["default-code-coverage"]

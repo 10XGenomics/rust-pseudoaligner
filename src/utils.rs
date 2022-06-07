@@ -95,13 +95,13 @@ pub fn read_transcripts(
 }
 
 pub fn detect_fasta_format(record: &fasta::Record) -> Result<FastaFormat, Error> {
-    let id_tokens: Vec<&str> = record.id().split('|').collect();
-    if id_tokens.len() == 9 {
+    let id_tokens = record.id().split('|');
+    if id_tokens.count() == 9 {
         return Ok(FastaFormat::Gencode);
     }
 
     let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
-    if desc_tokens.len() >= 1 {
+    if !desc_tokens.is_empty() {
         let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
         if gene_tokens.len() == 2 && gene_tokens[0] == "gene" {
             return Ok(FastaFormat::Gffread);

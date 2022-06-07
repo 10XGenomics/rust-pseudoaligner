@@ -7,11 +7,11 @@ use std::sync::Arc;
 use crate::config::{MEM_SIZE, REPORT_ALL_KMER, STRANDED};
 use boomphf::hashmap::{BoomHashMap2, NoKeyBoomHashMap};
 use debruijn;
-use debruijn::compression::*;
+use debruijn::compression::{compress_graph, compress_kmers_with_hash, ScmapCompress};
 use debruijn::dna_string::{DnaString, DnaStringSlice};
-use debruijn::filter::*;
-use debruijn::graph::*;
-use debruijn::*;
+use debruijn::filter::filter_kmers;
+use debruijn::graph::{BaseGraph, DebruijnGraph};
+use debruijn::{Exts, Kmer, Vmer};
 
 use crate::config::{MIN_KMERS, U32_MAX};
 use crate::equiv_classes::{CountFilterEqClass, EqClassIdType};
@@ -26,7 +26,7 @@ const MIN_SHARD_SEQUENCES: usize = 2000;
 
 pub fn build_index<K: Kmer + Sync + Send>(
     seqs: &[DnaString],
-    tx_names: &Vec<String>,
+    tx_names: &[String],
     tx_gene_map: &HashMap<String, String>,
     num_threads: usize,
 ) -> Result<Pseudoaligner<K>, Error> {
@@ -85,7 +85,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
         dbg,
         eq_classes,
         dbg_index,
-        tx_names.clone(),
+        tx_names.to_owned(),
         tx_gene_map.clone(),
     ))
 }
@@ -163,7 +163,6 @@ pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligne
             if s.len() != shortest {
                 let mut path_buf: Vec<usize> = Vec::new();
 
-                use std::iter::FromIterator;
                 al.map_read_to_nodes(s, &mut path_buf).unwrap();
                 let my_nodes: HashSet<usize> = HashSet::from_iter(path_buf.iter().cloned());
 
@@ -267,7 +266,7 @@ fn assemble_shard<K: Kmer>(
     summarizer: &Arc<CountFilterEqClass<u32>>,
 ) -> BaseGraph<K, EqClassIdType> {
     let filter_input: Vec<_> = shard_data
-        .into_iter()
+        .iter()
         .cloned()
         .map(|(_, seqid, string, exts)| (string, exts, seqid))
         .collect();
@@ -361,6 +360,7 @@ mod test {
     use crate::utils;
     use anyhow::Context;
     use bio::io::fasta;
+    use debruijn::kmer;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::proptest;
@@ -373,7 +373,7 @@ mod test {
             v in vec(0..100usize, 0..5000usize),
             min_sz in 1..200usize
         ) {
-            let res =  group_by_slices(&v, |v| v.clone(), min_sz);
+            let res =  group_by_slices(&v, |v| *v, min_sz);
             let total_len: usize = res.iter().map(|x| x.len()).sum();
             prop_assert_eq!(v.len(), total_len);
 
