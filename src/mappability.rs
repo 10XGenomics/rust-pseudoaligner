@@ -39,10 +39,10 @@ pub struct MappabilityRecord {
 }
 
 impl MappabilityRecord {
-    pub fn new(tx_name: &String, gene_name: &String) -> MappabilityRecord {
+    pub fn new(tx_name: &str, gene_name: &str) -> MappabilityRecord {
         MappabilityRecord {
-            tx_name: tx_name.clone(),
-            gene_name: gene_name.clone(),
+            tx_name: tx_name.to_string(),
+            gene_name: gene_name.to_string(),
             // tx_multiplicity[j] = # of kmers in this tx shared by j other transcripts
             tx_multiplicity: [0; MAPPABILITY_COUNTS_LEN],
             // gene_multiplicity[j] = # of kmers in the tx shared by j other genes
@@ -141,8 +141,7 @@ pub fn analyze_graph<K: Kmer>(index: &Pseudoaligner<K>) -> Result<Vec<Mappabilit
             let gene_name = index.tx_gene_mapping.get(tx_name);
             gene_names.push(gene_name)
         }
-        let unique_genes: Vec<_> = gene_names.iter().unique().collect();
-        let num_genes = unique_genes.len();
+        let num_genes = gene_names.iter().unique().count();
 
         for &tx_id in eq_class {
             records[tx_id as usize].add_tx_count(num_kmer, num_tx);

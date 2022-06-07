@@ -50,7 +50,8 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with mismatch = 2
     pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
-        self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES).map(|(read_coverage, _mismatches)| read_coverage)
+        self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES)
+            .map(|(read_coverage, _mismatches)| read_coverage)
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with configurable # of allowed mismatches
@@ -114,88 +115,87 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
             };
 
             // check if we can extend back if there were SNP in every kmer query
-            if kmer_pos >= left_extend_threshold && node_id.is_some() {
-                let mut last_pos = kmer_pos - 1;
-                let mut prev_node_id = node_id.unwrap();
-                let mut prev_kmer_offset = if kmer_offset.unwrap() > 0 {
-                    kmer_offset.unwrap() - 1
-                } else {
-                    0
-                };
+            if let Some(node_id) = node_id {
+                let kmer_offset = kmer_offset.unwrap();
+                if kmer_pos >= left_extend_threshold {
+                    let mut last_pos = kmer_pos - 1;
+                    let mut prev_node_id = node_id;
+                    let mut prev_kmer_offset = if kmer_offset > 0 { kmer_offset - 1 } else { 0 };
 
-                loop {
-                    let node = self.dbg.get_node(prev_node_id);
-                    //println!("{:?}, {:?}, {:?}, {:?}, {:?}",
-                    //         node, node.sequence(),
-                    //         &eq_classes[ *node.data() as usize],
-                    //         prev_kmer_offset, last_pos);
+                    loop {
+                        let node = self.dbg.get_node(prev_node_id);
+                        //println!("{:?}, {:?}, {:?}, {:?}, {:?}",
+                        //         node, node.sequence(),
+                        //         &eq_classes[ *node.data() as usize],
+                        //         prev_kmer_offset, last_pos);
 
-                    // length of remaining read before kmer match
-                    let skipped_read = last_pos + 1;
+                        // length of remaining read before kmer match
+                        let skipped_read = last_pos + 1;
 
-                    // length of the skipped node sequence before kmer match
-                    let skipped_ref = prev_kmer_offset + 1;
+                        // length of the skipped node sequence before kmer match
+                        let skipped_ref = prev_kmer_offset + 1;
 
-                    // find maximum extention possbile before fork or eof read
-                    let max_matchable_pos = std::cmp::min(skipped_read, skipped_ref);
+                        // find maximum extention possbile before fork or eof read
+                        let max_matchable_pos = std::cmp::min(skipped_read, skipped_ref);
 
-                    let ref_seq_slice = node.sequence();
-                    let mut premature_break = false;
-                    let mut matched_bases = 0;
-                    let mut seen_snp = 0;
-                    for idx in 0..max_matchable_pos {
-                        let ref_pos = prev_kmer_offset - idx;
-                        let read_offset = last_pos - idx;
+                        let ref_seq_slice = node.sequence();
+                        let mut premature_break = false;
+                        let mut matched_bases = 0;
+                        let mut seen_snp = 0;
+                        for idx in 0..max_matchable_pos {
+                            let ref_pos = prev_kmer_offset - idx;
+                            let read_offset = last_pos - idx;
 
-                        // compare base by base
-                        if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
-                            // Record mismatch
-                            mismatch_count += 1;
+                            // compare base by base
+                            if ref_seq_slice.get(ref_pos) != read_seq.get(read_offset) {
+                                // Record mismatch
+                                mismatch_count += 1;
 
-                            // Allowing num_mismatch-SNP
-                            seen_snp += 1;
-                            if seen_snp > allowed_mismatches {
-                                premature_break = true;
-                                break;
+                                // Allowing num_mismatch-SNP
+                                seen_snp += 1;
+                                if seen_snp > allowed_mismatches {
+                                    premature_break = true;
+                                    break;
+                                }
                             }
+
+                            matched_bases += 1;
+                            read_coverage += 1;
                         }
 
-                        matched_bases += 1;
-                        read_coverage += 1;
-                    }
+                        //break the loop if end of read reached or a premature mismatch
+                        if last_pos + 1 - matched_bases == 0 || premature_break {
+                            break;
+                        }
 
-                    //break the loop if end of read reached or a premature mismatch
-                    if last_pos + 1 - matched_bases == 0 || premature_break {
-                        break;
-                    }
+                        // adjust last position
+                        last_pos -= matched_bases;
 
-                    // adjust last position
-                    last_pos -= matched_bases;
+                        // If reached here then a fork is found in the reference.
+                        let exts = node.exts();
+                        let next_base = read_seq.get(last_pos);
+                        if exts.has_ext(Dir::Left, next_base) {
+                            // found a left extention.
+                            let index = exts
+                                .get(Dir::Left)
+                                .iter()
+                                .position(|&x| x == next_base)
+                                .unwrap();
 
-                    // If reached here then a fork is found in the reference.
-                    let exts = node.exts();
-                    let next_base = read_seq.get(last_pos);
-                    if exts.has_ext(Dir::Left, next_base) {
-                        // found a left extention.
-                        let index = exts
-                            .get(Dir::Left)
-                            .iter()
-                            .position(|&x| x == next_base)
-                            .unwrap();
+                            let edge = node.l_edges()[index];
 
-                        let edge = node.l_edges()[index];
+                            //update the previous node's id
+                            prev_node_id = edge.0;
+                            let prev_node = self.dbg.get_node(prev_node_id);
+                            prev_kmer_offset = prev_node.sequence().len() - kmer_length;
 
-                        //update the previous node's id
-                        prev_node_id = edge.0;
-                        let prev_node = self.dbg.get_node(prev_node_id);
-                        prev_kmer_offset = prev_node.sequence().len() - kmer_length;
-
-                        // extract colors
-                        nodes.push(prev_node.node_id);
-                    } else {
-                        break;
-                    }
-                } // end-loop
+                            // extract colors
+                            nodes.push(prev_node.node_id);
+                        } else {
+                            break;
+                        }
+                    } // end-loop
+                }
             } //end-if
 
             // forward search
@@ -373,7 +373,8 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// eqivalence class and the number of bases aligned on success
     /// or None is no alignment could be found.
     pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
-        self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES).map(|(eq_class, read_coverage, _mismatches)| (eq_class, read_coverage))
+        self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES)
+            .map(|(eq_class, read_coverage, _mismatches)| (eq_class, read_coverage))
     }
 }
 
@@ -524,9 +525,9 @@ mod test {
     use std::hash::Hash;
     use std::iter::FromIterator;
 
-    fn test_intersect<T: Hash + Eq + Clone + Ord + Debug>(v1: &Vec<T>, v2: &Vec<T>) {
-        let mut c1 = v1.clone();
-        let c2 = v2.clone();
+    fn test_intersect<T: Hash + Eq + Clone + Ord + Debug>(v1: &[T], v2: &[T]) {
+        let mut c1 = v1.to_owned();
+        let c2 = v2;
 
         let s1: HashSet<T> = HashSet::from_iter(c1.iter().cloned());
         let s2: HashSet<T> = HashSet::from_iter(c2.iter().cloned());
@@ -535,7 +536,7 @@ mod test {
         let mut int1: Vec<T> = intersection.cloned().collect();
         int1.sort();
 
-        intersect(&mut c1, &c2);
+        intersect(&mut c1, c2);
 
         assert_eq!(c1, int1);
     }

@@ -95,8 +95,8 @@ pub fn read_transcripts(
 }
 
 pub fn detect_fasta_format(record: &fasta::Record) -> Result<FastaFormat, Error> {
-    let id_tokens: Vec<&str> = record.id().split('|').collect();
-    if id_tokens.len() == 9 {
+    let id_tokens = record.id().split('|');
+    if id_tokens.count() == 9 {
         return Ok(FastaFormat::Gencode);
     }
 

@@ -11,7 +11,7 @@ use debruijn::compression::{compress_graph, compress_kmers_with_hash, ScmapCompr
 use debruijn::dna_string::{DnaString, DnaStringSlice};
 use debruijn::filter::filter_kmers;
 use debruijn::graph::{BaseGraph, DebruijnGraph};
-use debruijn::{Exts, Kmer, Mer, Vmer};
+use debruijn::{Exts, Kmer, Vmer};
 
 use crate::config::{MIN_KMERS, U32_MAX};
 use crate::equiv_classes::{CountFilterEqClass, EqClassIdType};
@@ -26,7 +26,7 @@ const MIN_SHARD_SEQUENCES: usize = 2000;
 
 pub fn build_index<K: Kmer + Sync + Send>(
     seqs: &[DnaString],
-    tx_names: &Vec<String>,
+    tx_names: &[String],
     tx_gene_map: &HashMap<String, String>,
     num_threads: usize,
 ) -> Result<Pseudoaligner<K>, Error> {
@@ -85,7 +85,7 @@ pub fn build_index<K: Kmer + Sync + Send>(
         dbg,
         eq_classes,
         dbg_index,
-        tx_names.clone(),
+        tx_names.to_owned(),
         tx_gene_map.clone(),
     ))
 }

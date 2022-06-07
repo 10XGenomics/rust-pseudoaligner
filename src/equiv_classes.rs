@@ -29,12 +29,11 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
     }
 
     pub fn get_eq_classes(&self) -> Vec<Vec<D>> {
-        let mut eq_class_vec = Vec::new();
-        eq_class_vec.resize(self.get_number_of_eq_classes(), Vec::new());
+        let mut eq_class_vec = vec![Vec::new(); self.get_number_of_eq_classes()];
 
-        let mut eq_ids = Vec::new();
+        let mut eq_ids = Vec::with_capacity(eq_class_vec.len());
 
-        for item in self.eq_classes.iter() {
+        for item in &self.eq_classes {
             eq_class_vec[*item.value() as usize] = item.key().clone();
             eq_ids.push(*item.value() as usize)
         }
@@ -45,8 +44,8 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
         // ids in CountFilterEqClass::summarize below.  panic if this
         // property doesn't hold.
         eq_ids.sort_unstable();
-        for i in 0..eq_ids.len() {
-            assert_eq!(eq_ids[i], i);
+        for (i, id) in eq_ids.into_iter().enumerate() {
+            assert_eq!(id, i);
         }
 
         eq_class_vec
