@@ -20,6 +20,9 @@ notice = "warn"
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
+    # TODO: update regex crate.  Currently depended
+    # on (transitively) by pretty_env_logger.
+    "RUSTSEC-2022-0013"
 ]
 
 # This section is considered when running `cargo deny check licenses`
@@ -72,13 +75,6 @@ registries = [
 multiple-versions = "deny"
 wildcards = "allow"
 highlight = "all"
-
-# Similarly to `skip` allows you to skip certain crates during duplicate 
-# detection. Unlike skip, it also includes the entire tree of transitive 
-# dependencies starting at the specified crate, up to a certain depth, which is
-# by default infinite
-skip-tree = [
-]
 
 [[bans.skip]]
 # proptest depends on both versions 1 and 2.
