@@ -91,7 +91,7 @@ checksum = "4a69423e30444738eccc5e54eccee75779dd3f15ecc0469b95d8529d4b6b7586"
 dependencies = [
  "anyhow",
  "approx",
- "bio-types 0.12.1",
+ "bio-types",
  "bit-set",
  "bv",
  "bytecount",
@@ -120,19 +120,6 @@ dependencies = [
  "thiserror",
  "triple_accel",
  "vec_map",
-]
-
-[[package]]
-name = "bio-types"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94fb49f226ebd14a668fbcf268241a3d81021e4f6882dda8bbc42f05ea823fd4"
-dependencies = [
- "lazy_static",
- "quick-error",
- "regex",
- "serde",
- "serde_derive",
 ]
 
 [[package]]
@@ -397,7 +384,7 @@ source = "git+https://github.com/10XGenomics/rust-debruijn#d05ac0c360fc7714a83fa
 dependencies = [
  "bit-set",
  "boomphf",
- "itertools 0.7.11",
+ "itertools 0.8.2",
  "log",
  "num-traits",
  "serde",
@@ -413,14 +400,14 @@ dependencies = [
  "anyhow",
  "bincode",
  "bio",
- "bio-types 0.5.1",
+ "bio-types",
  "boomphf",
  "crossbeam-utils 0.6.6",
  "dashmap",
  "debruijn",
  "docopt",
  "flate2",
- "itertools 0.7.11",
+ "itertools 0.10.3",
  "lazy_static",
  "log",
  "pretty_assertions",
@@ -696,18 +683,18 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.7.11"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d47946d458e94a1b7bcabbf6521ea7c037062c81f534615abcad76e84d4970d"
+checksum = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
 dependencies = [
  "either",
 ]
 
 [[package]]
 name = "itertools"
-version = "0.8.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
+checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
 dependencies = [
  "either",
 ]

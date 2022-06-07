@@ -249,6 +249,7 @@ fn partition_contigs<'a, K: Kmer>(
         // It is safe to always set rc to true when calling simple_scan. See
         // https://github.com/10XGenomics/rust-debruijn/issues/10
         // However, we set it to !STRANDED so stranded assays use more buckets.
+        #[allow(deprecated)]
         let msps = debruijn::msp::simple_scan::<_, PmerType>(K::k(), contig, &PERM, !STRANDED);
         for msp in msps {
             let bucket_id = msp.bucket();
@@ -406,6 +407,7 @@ mod test {
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[cfg_attr(feature = "slow_tests", test)]
     fn test_gencode_full_build_20() -> Result<(), Error> {
         let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";
@@ -416,6 +418,7 @@ mod test {
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[cfg_attr(feature = "slow_tests", test)]
     fn test_gencode_full_build_64() -> Result<(), Error> {
         let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";

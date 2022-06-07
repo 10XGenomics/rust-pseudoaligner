@@ -44,9 +44,6 @@ Options:
 struct Args {
     arg_ref_fasta: String,
     arg_index: String,
-    arg_counts: String,
-    arg_locus: Option<String>,
-    arg_genes: Vec<String>,
     arg_reads_fastq: String,
     flag_outdir: Option<String>,
     flag_num_threads: usize,
