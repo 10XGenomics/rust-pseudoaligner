@@ -424,17 +424,23 @@ mod test {
         let (seqs, tx_names, tx_gene_map) = utils::read_transcripts(fasta)?;
         let index = build_index::<kmer::Kmer20>(&seqs, &tx_names, &tx_gene_map, 2)?;
 
-        let ex1 = DnaString::from_dna_string("GGCTGTCAACCAGTCCATAGGCAGGGCCATCAGGCACCAAAGGGATTCTGCCAGCATAGT");
+        let ex1 = DnaString::from_dna_string(
+            "GGCTGTCAACCAGTCCATAGGCAGGGCCATCAGGCACCAAAGGGATTCTGCCAGCATAGT",
+        );
         let (eq_class, nbases) = index.map_read(&ex1).unwrap();
         assert_eq!(eq_class, [1, 30]);
         assert_eq!(nbases, ex1.len());
 
-        let single_snp = DnaString::from_dna_string("GGCTGTCAACCAGTCCATAGGCGGGGCCATCAGGCACCAAAGGGATTCTGCCAGCATAGT");
+        let single_snp = DnaString::from_dna_string(
+            "GGCTGTCAACCAGTCCATAGGCGGGGCCATCAGGCACCAAAGGGATTCTGCCAGCATAGT",
+        );
         let (eq_class, nbases) = index.map_read(&single_snp).unwrap();
         assert_eq!(eq_class, [1, 30]);
         assert_eq!(nbases, single_snp.len());
 
-        let two_snps = DnaString::from_dna_string("GGCTGTCAACCAGTCCATAGGCGGGGCCATCAGGCACCAAAGGGATTCTGCCAGCGTAGT");
+        let two_snps = DnaString::from_dna_string(
+            "GGCTGTCAACCAGTCCATAGGCGGGGCCATCAGGCACCAAAGGGATTCTGCCAGCGTAGT",
+        );
         let (eq_class, nbases) = index.map_read(&single_snp).unwrap();
         assert_eq!(eq_class, [1, 30]);
         assert_eq!(nbases, two_snps.len());
