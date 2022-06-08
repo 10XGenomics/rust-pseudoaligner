@@ -1,7 +1,7 @@
 // Copyright (c) 2018 10x Genomics, Inc. All rights reserved.
 
 use lazy_static::lazy_static;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::{MEM_SIZE, REPORT_ALL_KMER, STRANDED};
@@ -11,7 +11,7 @@ use debruijn::compression::{compress_graph, compress_kmers_with_hash, ScmapCompr
 use debruijn::dna_string::{DnaString, DnaStringSlice};
 use debruijn::filter::filter_kmers;
 use debruijn::graph::{BaseGraph, DebruijnGraph};
-use debruijn::{Exts, Kmer, Vmer};
+use debruijn::{Exts, Kmer};
 
 use crate::config::{MIN_KMERS, U32_MAX};
 use crate::equiv_classes::{CountFilterEqClass, EqClassIdType};
@@ -90,117 +90,6 @@ pub fn build_index<K: Kmer + Sync + Send>(
     ))
 }
 
-// Manually compute the equivalence class of each kmer, and make sure
-// it matches that equivalence class for that kmer inside the DBG.
-#[inline(never)]
-pub fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>) {
-    let mut eqclasses = HashMap::<K, Vec<u32>>::new();
-
-    // compute the equivalence class of each kmer
-    for (i, s) in seqs.iter().enumerate() {
-        for k in s.iter_kmers::<K>() {
-            let eq = eqclasses.entry(k).or_insert(vec![]);
-            eq.push(i as u32)
-        }
-    }
-
-    // check that the equivalence class of the kmer inside the graph matches the naive version
-    for (k, mut test_eqclass) in eqclasses {
-        test_eqclass.dedup();
-
-        if test_eqclass.len() > 5000 {
-            println!("kmer: {:?}, eqclass.len(): {}", k, test_eqclass.len());
-        }
-
-        let (node_id, _) = al.dbg_index.get(&k).unwrap();
-
-        let eq_class = al.dbg.get_node(*node_id as usize).data();
-        let dbg_eqclass = &al.eq_classes[*eq_class as usize];
-
-        let mut dbg_eq_clone = dbg_eqclass.clone();
-        dbg_eq_clone.dedup();
-
-        if &dbg_eq_clone != dbg_eqclass {
-            println!(
-                "dbg eq class not unique: eqclass_id: {}, node: {}",
-                eq_class, node_id
-            );
-            assert_eq!(&dbg_eq_clone, dbg_eqclass);
-        }
-
-        assert_eq!(&test_eqclass, dbg_eqclass);
-    }
-
-    // check that each read sequence aligns cleanly
-    for (i, s) in seqs.iter().enumerate() {
-        let i = i as u32;
-
-        // transcripts shorter than k can't be mapped
-        if s.len() < K::k() {
-            continue;
-        }
-
-        let (eqclass, bases_aligned) = al.map_read(s).unwrap();
-        assert_eq!(s.len(), bases_aligned);
-
-        if eqclass.len() > 1 {
-            assert!(eqclass.contains(&i));
-
-            // identical strings
-            if eqclass.len() == 2 && seqs[eqclass[0] as usize] == seqs[eqclass[1] as usize] {
-                continue;
-            }
-
-            // if the sequences aren't identical, the current string must be shortest, or
-            // the set of nodes visited by the input string must be a subset of the other sequences
-            // in the equivalence class.
-            let shortest = eqclass
-                .iter()
-                .map(|x| seqs[*x as usize].len())
-                .min()
-                .unwrap();
-
-            if s.len() != shortest {
-                let mut path_buf: Vec<usize> = Vec::new();
-
-                al.map_read_to_nodes(s, &mut path_buf).unwrap();
-                let my_nodes: HashSet<usize> = HashSet::from_iter(path_buf.iter().cloned());
-
-                println!("eqclass: {:?}", eqclass);
-                for i in &eqclass {
-                    println!(
-                        "{}: {}, len:{}",
-                        i,
-                        al.tx_names[*i as usize],
-                        seqs[*i as usize].len()
-                    );
-                    println!("{:?}", seqs[*i as usize]);
-
-                    let r = al
-                        .map_read_to_nodes(&seqs[*i as usize], &mut path_buf)
-                        .unwrap();
-                    let other_nodes = HashSet::from_iter(path_buf.iter().cloned());
-
-                    println!("r: {:?}", r);
-                    println!("{:?}", path_buf);
-
-                    assert!(my_nodes.is_subset(&other_nodes));
-                    println!("---");
-                }
-            }
-
-        // debugging
-        // println!("--- dup on {}", i);
-        // for e in &eqclass {
-        //     println!("{}: {}", e, al.tx_names[*e as usize]);
-        //     println!("{:?}", seqs[*e as usize]);
-        // }
-        } else {
-            assert_eq!(eqclass, vec![i]);
-        }
-    }
-}
-
 type PmerType = debruijn::kmer::Kmer6;
 
 lazy_static! {
@@ -228,21 +117,20 @@ lazy_static! {
 fn count_a_t_bases<K: Kmer>(kmer: &K) -> usize {
     let mut count = 0;
     for i in 0..K::k() {
-        if kmer.get(i) == b'A' || kmer.get(i) == b'T' {
+        let v = kmer.get(i);
+        if v == b'A' || v == b'T' {
             count += 1;
         }
     }
     count
 }
 
-fn partition_contigs<'a, K: Kmer>(
-    contig: &'a DnaString,
+fn partition_contigs<K: Kmer>(
+    contig: &DnaString,
     contig_id: u32,
-) -> Vec<(u16, u32, DnaStringSlice<'a>, Exts)> {
+) -> Vec<(u16, u32, DnaStringSlice<'_>, Exts)> {
     // One FASTA entry possibly broken into multiple contigs
     // based on the location of `N` int he sequence.
-
-    let mut bucket_slices = Vec::new();
 
     if contig.len() >= K::k() {
         // It is safe to always set rc to true when calling simple_scan. See
@@ -250,15 +138,17 @@ fn partition_contigs<'a, K: Kmer>(
         // However, we set it to !STRANDED so stranded assays use more buckets.
         #[allow(deprecated)]
         let msps = debruijn::msp::simple_scan::<_, PmerType>(K::k(), contig, &PERM, !STRANDED);
-        for msp in msps {
-            let bucket_id = msp.bucket();
-            let slice = contig.slice(msp.start(), msp.end());
-            let exts = Exts::from_dna_string(contig, msp.start(), msp.len());
-            bucket_slices.push((bucket_id, contig_id, slice, exts));
-        }
+        msps.into_iter()
+            .map(|msp| {
+                let bucket_id = msp.bucket();
+                let slice = contig.slice(msp.start(), msp.end());
+                let exts = Exts::from_dna_string(contig, msp.start(), msp.len());
+                (bucket_id, contig_id, slice, exts)
+            })
+            .collect()
+    } else {
+        Vec::new()
     }
-
-    bucket_slices
 }
 
 fn assemble_shard<K: Kmer>(
@@ -342,8 +232,8 @@ fn group_by_slices<T, K: PartialEq, F: Fn(&T) -> K>(
 ) -> Vec<&[T]> {
     let mut slice_start = 0;
     let mut result = Vec::new();
-    for i in 1..data.len() {
-        if !(f(&data[i - 1]) == f(&data[i])) && (i - slice_start) > min_size {
+    for ((i, d1), d2) in data.iter().enumerate().skip(1).zip(data.iter()) {
+        if (i - slice_start) > min_size && f(d1) != f(d2) {
             result.push(&data[slice_start..i]);
             slice_start = i;
         }
@@ -361,9 +251,122 @@ mod test {
     use anyhow::Context;
     use bio::io::fasta;
     use debruijn::kmer;
+    use debruijn::Vmer;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::proptest;
+    use std::collections::HashSet;
+
+    // Manually compute the equivalence class of each kmer, and make sure
+    // it matches that equivalence class for that kmer inside the DBG.
+    #[inline(never)]
+    fn validate_dbg<K: Kmer + Sync + Send>(seqs: &[DnaString], al: &Pseudoaligner<K>) {
+        let mut eqclasses = HashMap::<K, Vec<u32>>::new();
+
+        // compute the equivalence class of each kmer
+        for (i, s) in seqs.iter().enumerate() {
+            for k in s.iter_kmers::<K>() {
+                let eq = eqclasses.entry(k).or_insert_with(Vec::new);
+                eq.push(i as u32)
+            }
+        }
+
+        // check that the equivalence class of the kmer inside the graph matches the naive version
+        for (k, mut test_eqclass) in eqclasses {
+            test_eqclass.dedup();
+
+            if test_eqclass.len() > 5000 {
+                println!("kmer: {:?}, eqclass.len(): {}", k, test_eqclass.len());
+            }
+
+            let (node_id, _) = al.dbg_index.get(&k).unwrap();
+
+            let eq_class = al.dbg.get_node(*node_id as usize).data();
+            let dbg_eqclass = &al.eq_classes[*eq_class as usize];
+
+            let mut dbg_eq_clone = dbg_eqclass.clone();
+            dbg_eq_clone.dedup();
+
+            if &dbg_eq_clone != dbg_eqclass {
+                println!(
+                    "dbg eq class not unique: eqclass_id: {}, node: {}",
+                    eq_class, node_id
+                );
+                assert_eq!(&dbg_eq_clone, dbg_eqclass);
+            }
+
+            assert_eq!(&test_eqclass, dbg_eqclass);
+        }
+
+        // check that each read sequence aligns cleanly
+        for (i, s) in seqs.iter().enumerate() {
+            let i = i as u32;
+
+            // transcripts shorter than k can't be mapped
+            if s.len() < K::k() {
+                continue;
+            }
+
+            let (eqclass, bases_aligned) = al.map_read(s).unwrap();
+            assert_eq!(s.len(), bases_aligned);
+
+            if eqclass.len() > 1 {
+                assert!(eqclass.contains(&i));
+
+                // identical strings
+                if eqclass.len() == 2 && seqs[eqclass[0] as usize] == seqs[eqclass[1] as usize] {
+                    continue;
+                }
+
+                // if the sequences aren't identical, the current string must be shortest, or
+                // the set of nodes visited by the input string must be a subset of the other sequences
+                // in the equivalence class.
+                let shortest = eqclass
+                    .iter()
+                    .map(|x| seqs[*x as usize].len())
+                    .min()
+                    .unwrap();
+
+                if s.len() != shortest {
+                    let mut path_buf: Vec<usize> = Vec::new();
+
+                    al.map_read_to_nodes(s, &mut path_buf).unwrap();
+                    let my_nodes: HashSet<usize> = HashSet::from_iter(path_buf.iter().cloned());
+
+                    println!("eqclass: {:?}", eqclass);
+                    for i in &eqclass {
+                        println!(
+                            "{}: {}, len:{}",
+                            i,
+                            al.tx_names[*i as usize],
+                            seqs[*i as usize].len()
+                        );
+                        println!("{:?}", seqs[*i as usize]);
+
+                        let r = al
+                            .map_read_to_nodes(&seqs[*i as usize], &mut path_buf)
+                            .unwrap();
+                        let other_nodes = HashSet::from_iter(path_buf.iter().cloned());
+
+                        println!("r: {:?}", r);
+                        println!("{:?}", path_buf);
+
+                        assert!(my_nodes.is_subset(&other_nodes));
+                        println!("---");
+                    }
+                }
+
+            // debugging
+            // println!("--- dup on {}", i);
+            // for e in &eqclass {
+            //     println!("{}: {}", e, al.tx_names[*e as usize]);
+            //     println!("{:?}", seqs[*e as usize]);
+            // }
+            } else {
+                assert_eq!(eqclass, vec![i]);
+            }
+        }
+    }
 
     proptest! {
         #![proptest_config(ProptestConfig { cases: 2000, .. ProptestConfig::default()})]

@@ -31,18 +31,18 @@ const MAPPABILITY_HEADER_STRING: &str =
     "tx_name\tgene_name\ttx_kmer_count\tfrac_kmer_unique_tx\tfrac_kmer_unique_gene\n";
 
 #[derive(Debug)]
-pub struct MappabilityRecord {
-    pub tx_name: String,
-    pub gene_name: String,
+pub struct MappabilityRecord<'a> {
+    pub tx_name: &'a str,
+    pub gene_name: &'a str,
     tx_multiplicity: [usize; MAPPABILITY_COUNTS_LEN],
     gene_multiplicity: [usize; MAPPABILITY_COUNTS_LEN],
 }
 
-impl MappabilityRecord {
-    pub fn new(tx_name: &str, gene_name: &str) -> MappabilityRecord {
+impl MappabilityRecord<'_> {
+    fn new<'a>(tx_name: &'a str, gene_name: &'a str) -> MappabilityRecord<'a> {
         MappabilityRecord {
-            tx_name: tx_name.to_string(),
-            gene_name: gene_name.to_string(),
+            tx_name,
+            gene_name,
             // tx_multiplicity[j] = # of kmers in this tx shared by j other transcripts
             tx_multiplicity: [0; MAPPABILITY_COUNTS_LEN],
             // gene_multiplicity[j] = # of kmers in the tx shared by j other genes
@@ -50,11 +50,11 @@ impl MappabilityRecord {
         }
     }
 
-    pub fn total_kmer_count(&self) -> usize {
+    fn total_kmer_count(&self) -> usize {
         self.tx_multiplicity.iter().sum()
     }
 
-    pub fn add_tx_count(&mut self, count: usize, multiplicity: usize) {
+    fn add_tx_count(&mut self, count: usize, multiplicity: usize) {
         if multiplicity > MAPPABILITY_COUNTS_LEN {
             self.tx_multiplicity[MAPPABILITY_COUNTS_LEN - 1] += count
         } else {
@@ -62,7 +62,7 @@ impl MappabilityRecord {
         }
     }
 
-    pub fn add_gene_count(&mut self, count: usize, multiplicity: usize) {
+    fn add_gene_count(&mut self, count: usize, multiplicity: usize) {
         if multiplicity > MAPPABILITY_COUNTS_LEN {
             self.gene_multiplicity[MAPPABILITY_COUNTS_LEN - 1] += count
         } else {
@@ -70,15 +70,15 @@ impl MappabilityRecord {
         }
     }
 
-    pub fn fraction_unique_tx(&self) -> f64 {
+    fn fraction_unique_tx(&self) -> f64 {
         self.tx_multiplicity[0] as f64 / self.total_kmer_count() as f64
     }
 
-    pub fn fraction_unique_gene(&self) -> f64 {
+    fn fraction_unique_gene(&self) -> f64 {
         self.gene_multiplicity[0] as f64 / self.total_kmer_count() as f64
     }
 
-    pub fn to_tsv(&self) -> String {
+    fn to_tsv(&self) -> String {
         format!(
             "{}\t{}\t{}\t{}\t{}",
             self.tx_name,
@@ -117,14 +117,15 @@ pub fn write_mappability_tsv<P: AsRef<Path>>(
 //     }
 // }
 
-pub fn analyze_graph<K: Kmer>(index: &Pseudoaligner<K>) -> Result<Vec<MappabilityRecord>, Error> {
-    let mut records = Vec::new();
-
+pub fn analyze_graph<K: Kmer>(
+    index: &Pseudoaligner<K>,
+) -> Result<Vec<MappabilityRecord<'_>>, Error> {
     // Make records
-    for tx_name in index.tx_names.iter() {
-        let gene_name = index.tx_gene_mapping.get(tx_name).unwrap();
-        records.push(MappabilityRecord::new(tx_name, gene_name));
-    }
+    let mut records = index
+        .tx_names
+        .iter()
+        .map(|tx_name| MappabilityRecord::new(tx_name, index.tx_gene_mapping.get(tx_name).unwrap()))
+        .collect::<Vec<_>>();
 
     // Iterate through graph
     for node in index.dbg.iter_nodes() {
@@ -135,17 +136,19 @@ pub fn analyze_graph<K: Kmer>(index: &Pseudoaligner<K>) -> Result<Vec<Mappabilit
 
         let num_tx = eq_class.len();
 
-        let mut gene_names = Vec::new();
-        for &tx_id in eq_class {
-            let tx_name = &index.tx_names[tx_id as usize];
-            let gene_name = index.tx_gene_mapping.get(tx_name);
-            gene_names.push(gene_name)
-        }
-        let num_genes = gene_names.iter().unique().count();
+        let num_genes = eq_class
+            .iter()
+            .map(|&tx_id| {
+                let tx_name = &index.tx_names[tx_id as usize];
+                index.tx_gene_mapping.get(tx_name)
+            })
+            .unique()
+            .count();
 
         for &tx_id in eq_class {
-            records[tx_id as usize].add_tx_count(num_kmer, num_tx);
-            records[tx_id as usize].add_gene_count(num_kmer, num_genes);
+            let record = &mut records[tx_id as usize];
+            record.add_tx_count(num_kmer, num_tx);
+            record.add_gene_count(num_kmer, num_genes);
         }
     }
 
