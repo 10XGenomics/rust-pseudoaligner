@@ -56,9 +56,11 @@ fn _open_with_gz<P: AsRef<Path>>(p: P) -> Result<Box<dyn BufRead>, Error> {
     }
 }
 
+type ReadTranscriptResults = (Vec<DnaString>, Vec<String>, HashMap<String, String>);
+
 pub fn read_transcripts(
     reader: fasta::Reader<BufReader<File>>,
-) -> Result<(Vec<DnaString>, Vec<String>, HashMap<String, String>), Error> {
+) -> Result<ReadTranscriptResults, Error> {
     let mut seqs = Vec::new();
     let mut transcript_counter = 0;
     let mut tx_ids = Vec::new();
@@ -80,8 +82,8 @@ pub fn read_transcripts(
 
         let (tx_id, gene_id) = extract_tx_gene_id(&record, &fasta_format);
 
-        tx_ids.push(tx_id.clone());
-        tx_to_gene_map.insert(tx_id, gene_id);
+        tx_ids.push(tx_id.to_string());
+        tx_to_gene_map.insert(tx_id.to_string(), gene_id.to_string());
 
         transcript_counter += 1;
     }
@@ -94,47 +96,51 @@ pub fn read_transcripts(
     Ok((seqs, tx_ids, tx_to_gene_map))
 }
 
-pub fn detect_fasta_format(record: &fasta::Record) -> Result<FastaFormat, Error> {
+fn detect_fasta_format(record: &fasta::Record) -> Result<FastaFormat, Error> {
     let id_tokens = record.id().split('|');
     if id_tokens.count() == 9 {
         return Ok(FastaFormat::Gencode);
     }
 
-    let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
-    if !desc_tokens.is_empty() {
-        let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
-        if gene_tokens.len() == 2 && gene_tokens[0] == "gene" {
-            return Ok(FastaFormat::Gffread);
+    let mut desc_tokens = record.desc().unwrap().split(' ');
+    if let Some(desc_token) = desc_tokens.next() {
+        let mut gene_tokens = desc_token.split('=');
+        if let Some(gene_token) = gene_tokens.next() {
+            if gene_token == "gene" && gene_tokens.count() == 1 {
+                return Ok(FastaFormat::Gffread);
+            }
+        } else if desc_tokens.count() == 4 {
+            return Ok(FastaFormat::Ensembl);
         }
-    } else if desc_tokens.len() == 5 {
-        return Ok(FastaFormat::Ensembl);
     }
     anyhow::bail!("Failed to detect FASTA header format.")
 }
 
-pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: &FastaFormat) -> (String, String) {
+fn extract_tx_gene_id<'a>(
+    record: &'a fasta::Record,
+    fasta_format: &FastaFormat,
+) -> (&'a str, &'a str) {
     match *fasta_format {
         FastaFormat::Gencode => {
-            let id_tokens: Vec<&str> = record.id().split('|').collect();
-            let tx_id = id_tokens[0].to_string();
-            let gene_id = id_tokens[1].to_string();
+            let mut id_tokens = record.id().split('|');
+            let tx_id = id_tokens.next().unwrap();
+            let gene_id = id_tokens.next().unwrap();
             // (human readable name)
             // let gene_name = id_tokens[5].to_string();
             (tx_id, gene_id)
         }
         FastaFormat::Ensembl => {
-            let tx_id = record.id().to_string();
-            let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
-            let gene_tmp: Vec<&str> = desc_tokens[2].split(':').collect();
-            let gene_id = gene_tmp[1].to_string();
+            let tx_id = record.id();
+            let mut desc_tokens = record.desc().unwrap().split(' ');
+            let gene_id = desc_tokens.nth(2).unwrap().split(':').nth(1).unwrap();
             (tx_id, gene_id)
         }
         FastaFormat::Gffread => {
-            let id_tokens: Vec<&str> = record.id().split(' ').collect();
-            let tx_id = id_tokens[0].to_string();
-            let desc_tokens: Vec<&str> = record.desc().unwrap().split(' ').collect();
-            let gene_tokens: Vec<&str> = desc_tokens[0].split('=').collect();
-            let gene_id = gene_tokens[1].to_string();
+            let mut id_tokens = record.id().split(' ');
+            let tx_id = id_tokens.next().unwrap();
+            let mut desc_tokens = record.desc().unwrap().split(' ');
+            let mut gene_tokens = desc_tokens.next().unwrap().split('=');
+            let gene_id = gene_tokens.nth(1).unwrap();
             (tx_id, gene_id)
         }
         FastaFormat::Unknown => {
@@ -143,14 +149,14 @@ pub fn extract_tx_gene_id(record: &fasta::Record, fasta_format: &FastaFormat) ->
     }
 }
 
-pub fn get_next_record<R: io::BufRead>(
+pub(crate) fn get_next_record<R: io::BufRead>(
     reader: &Arc<Mutex<fastq::Records<R>>>,
 ) -> Option<Result<fastq::Record, bio::io::fastq::Error>> {
     let mut lock = reader.lock().unwrap();
     lock.next()
 }
 
-pub fn open_file<P: AsRef<Path>>(filename: &str, outdir: P) -> Result<File, Error> {
+pub(crate) fn open_file<P: AsRef<Path>>(filename: &str, outdir: P) -> Result<File, Error> {
     let out_fn = outdir.as_ref().join(filename);
     let outfile = File::create(&out_fn)?;
     Ok(outfile)

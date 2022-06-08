@@ -32,7 +32,7 @@ pub struct Pseudoaligner<K: Kmer> {
 }
 
 impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
-    pub fn new(
+    pub(crate) fn new(
         dbg: DebruijnGraph<K, EqClassIdType>,
         eq_classes: Vec<Vec<u32>>,
         dbg_index: NoKeyBoomHashMap<K, (u32, u32)>,
@@ -49,13 +49,18 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with mismatch = 2
-    pub fn map_read_to_nodes(&self, read_seq: &DnaString, nodes: &mut Vec<usize>) -> Option<usize> {
+    #[cfg(test)]
+    pub(crate) fn map_read_to_nodes(
+        &self,
+        read_seq: &DnaString,
+        nodes: &mut Vec<usize>,
+    ) -> Option<usize> {
         self.map_read_to_nodes_with_mismatch(read_seq, nodes, DEFAULT_ALLOWED_MISMATCHES)
             .map(|(read_coverage, _mismatches)| read_coverage)
     }
 
     /// Pseudo-align `read_seq` and return a list of nodes that the read was aligned to, with configurable # of allowed mismatches
-    pub fn map_read_to_nodes_with_mismatch(
+    fn map_read_to_nodes_with_mismatch(
         &self,
         read_seq: &DnaString,
         nodes: &mut Vec<usize>,
@@ -314,7 +319,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
     /// Convert a list of nodes contacted by a read into an equivalence class.
     /// Supply node list in `nodes`. Equivalence class will be written to `eq_class`.
-    pub fn nodes_to_eq_class(&self, nodes: &mut Vec<usize>, eq_class: &mut Vec<u32>) {
+    fn nodes_to_eq_class(&self, nodes: &mut Vec<usize>, eq_class: &mut Vec<u32>) {
         eq_class.clear();
 
         if nodes.is_empty() {
@@ -352,7 +357,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// Pseudoalign the `read_seq` to the graph. Returns a tuple of the
     /// eqivalence class, the number of bases aligned on success,
     /// and the number of mismatched bases, or None is no alignment could be found.
-    pub fn map_read_with_mismatch(
+    fn map_read_with_mismatch(
         &self,
         read_seq: &DnaString,
         allowed_mismatches: usize,
@@ -372,7 +377,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
     /// Pseudoalign the `read_seq` to the graph with # mismatches = 2. Returns a tuple of the
     /// eqivalence class and the number of bases aligned on success
     /// or None is no alignment could be found.
-    pub fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
+    pub(crate) fn map_read(&self, read_seq: &DnaString) -> Option<(Vec<u32>, usize)> {
         self.map_read_with_mismatch(read_seq, DEFAULT_ALLOWED_MISMATCHES)
             .map(|(eq_class, read_coverage, _mismatches)| (eq_class, read_coverage))
     }
@@ -380,7 +385,7 @@ impl<K: Kmer + Sync + Send> Pseudoaligner<K> {
 
 /// Compute the intersection of v1 and v2 inplace on top of v1
 /// v1 and v2 must be sorted and deduplicated.
-pub fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
+fn intersect<T: Eq + Ord>(v1: &mut Vec<T>, v2: &[T]) {
     if v1.is_empty() {
         return;
     }

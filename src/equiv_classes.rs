@@ -54,10 +54,6 @@ impl<D: Eq + Hash + Send + Sync + Debug + Clone> CountFilterEqClass<D> {
     pub fn get_number_of_eq_classes(&self) -> usize {
         self.num_eq_classes.load(Ordering::SeqCst)
     }
-
-    pub fn fetch_add(&self) -> usize {
-        self.num_eq_classes.fetch_add(1, Ordering::SeqCst)
-    }
 }
 
 impl<D: Eq + Ord + Hash + Send + Sync + Debug + Clone> KmerSummarizer<D, EqClassIdType>
