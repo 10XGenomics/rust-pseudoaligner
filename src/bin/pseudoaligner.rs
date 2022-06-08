@@ -24,21 +24,20 @@ const USAGE: &str = "
 De-bruijn-mapping
 
 Usage:
-  pseudoaligner index [--num-threads=<n>] -i <index> <ref-fasta>
-  pseudoaligner map [--num-threads=<n>] -i <index> <reads-fastq>
-  pseudoaligner mappability [-o <outdir>] -i <index>
-  pseudoaligner idxstats -i <index>
-  pseudoaligner inspect -i <index> -c <counts> <genes>...
+  pseudoaligner index [--kmer-size=<k>] [--num-threads=<n>] -i <index> <ref-fasta>
+  pseudoaligner map [--kmer-size=<k>] [--num-threads=<n>] -i <index> <reads-fastq>
+  pseudoaligner mappability [-o <outdir>] [--kmer-size=<k>] -i <index>
+  pseudoaligner idxstats [--kmer-size=<k>] -i <index>
+  pseudoaligner inspect [--kmer-size=<k>] -i <index> -c <counts> <genes>...
   pseudoaligner -h | --help | -v | --version
 
 Options:
-  -k --kmer-size      Kmer size to use - only 20 or 64 currently supported [default: 20].
+  -k --kmer-size K    Kmer size to use - only 20 or 64 currently supported [default: 20].
   -n --num-threads N  Number of worker threads [default: 2]
   -o --outdir DIR     Output directory
   -h --help           Show this screen.
   -v --version        Show version.
 ";
-// -l --long         Long output format (one line per read-transcript mapping)
 
 #[derive(Clone, Debug, Deserialize)]
 struct Args {
@@ -55,7 +54,6 @@ struct Args {
     cmd_mappability: bool,
     cmd_idxstats: bool,
 
-    // flag_long: bool,
     flag_version: bool,
     flag_v: bool,
 }
