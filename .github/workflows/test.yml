@@ -33,7 +33,7 @@ jobs:
           rm -r cargo-deny-*
           echo "$HOME/bin" >> $GITHUB_PATH
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       - name: Deny duplicate dependencies and check licenses
         run: cargo deny --locked check
       - uses: actions-rs/clippy-check@v1
