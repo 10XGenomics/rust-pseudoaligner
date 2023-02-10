@@ -99,9 +99,9 @@ dependencies = [
 
 [[package]]
 name = "bio-types"
-version = "0.12.1"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13bc4296477f37f54e4fd21efaf48a7fa40fbb289bfbf338af5fbbe42797acb6"
+checksum = "dfa990f40a28735fa598dc3dd58d73e62e6b41458959d623903b927ba7b04c80"
 dependencies = [
  "derive-new",
  "lazy_static",
