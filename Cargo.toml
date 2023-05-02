@@ -9,7 +9,6 @@ include = ["src/**/*", "LICENSE", "README.md"]
 
 [dependencies]
 bio = ">=0.35"
-bio-types = ">=0.12"
 crossbeam-utils = ">=0.7"
 debruijn = { git = "https://github.com/10XGenomics/rust-debruijn" }
 docopt = "1.0"
@@ -24,10 +23,6 @@ boomphf = ">=0.5"
 dashmap = "5"
 bincode = "1.2"
 pretty_env_logger = "0.4"
-
-[dependencies.smallvec]
-version = "1.10"
-features = ["serde"]
 
 [dev-dependencies.proptest]
 version = "1"
