@@ -287,7 +287,7 @@ dependencies = [
 [[package]]
 name = "debruijn"
 version = "0.3.4"
-source = "git+https://github.com/10XGenomics/rust-debruijn#d05ac0c360fc7714a83fa5e4c3680a3691b5229a"
+source = "git+https://github.com/10XGenomics/rust-debruijn#cd6f17ed41bf8d0b417427dfc3dabde381f90eb0"
 dependencies = [
  "bit-set",
  "boomphf",
