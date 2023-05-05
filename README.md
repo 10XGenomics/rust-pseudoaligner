@@ -2,7 +2,7 @@
 
 A work-in-progress tool for pseudo-alignment of RNA-seq reads to transcriptome references. This project aims to create a very high performance pseudo-alignment tool suitable for single-cell RNA-seq data, and easily usable as a component of larger pipelines. We build on the crates includng [debruijn](https://github.com/10XGenomics/rust-debruijn) and [boomphf](https://github.com/10XGenomics/rust-boomphf), and [bio](https://github.com/rust-bio/rust-bio)
 
-This tool implements existing algorithms from the literature inlcuding:
+This tool implements existing algorithms from the literature including:
 
 Bray, Nicolas L., et al. "Near-optimal probabilistic RNA-seq quantification." Nature biotechnology 34.5 (2016): 525.
 https://arxiv.org/ftp/arxiv/papers/1505/1505.02710.pdf
