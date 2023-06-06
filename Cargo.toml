@@ -22,7 +22,7 @@ serde = "1.0"
 boomphf = ">=0.5"
 dashmap = "5"
 bincode = "1.2"
-pretty_env_logger = "0.4"
+pretty_env_logger = "0.5"
 
 [dev-dependencies.proptest]
 version = "1"
