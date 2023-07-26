@@ -1,6 +1,6 @@
 [package]
 name = "debruijn_mapping"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Avi Srivastava <avi.sri02@gmail.com>", "Patrick Marks <patrick@10xgenomics.com>", "Joey Arthur <joey.arthur@10xgenomics.com>"]
 edition = "2021"
 license = "MIT"
@@ -19,7 +19,7 @@ lazy_static = "1.4"
 log = "0.4"
 rayon = "1.7"
 serde = "1.0"
-boomphf = ">=0.5"
+boomphf = { version = "^0.6", features = ["serde"] }
 dashmap = "5"
 bincode = "1.2"
 pretty_env_logger = "0.5"
