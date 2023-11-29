@@ -451,6 +451,7 @@ mod test {
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[cfg_attr(feature = "slow_tests", test)]
     fn test_gencode_full_build_64() -> Result<(), Error> {
         let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";
