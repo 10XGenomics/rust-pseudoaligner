@@ -102,8 +102,7 @@ lazy_static! {
         }
         sorted_kmers.sort_by_key(count_a_t_bases);
 
-        let mut permutation = Vec::new();
-        permutation.resize(maxp, 0);
+        let mut permutation = vec![0; maxp];
 
         for (sort_pos, kmer) in sorted_kmers.into_iter().enumerate() {
             permutation[kmer.to_u64() as usize] = sort_pos;
