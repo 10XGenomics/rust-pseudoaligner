@@ -102,8 +102,7 @@ lazy_static! {
         }
         sorted_kmers.sort_by_key(count_a_t_bases);
 
-        let mut permutation = Vec::new();
-        permutation.resize(maxp, 0);
+        let mut permutation = vec![0; maxp];
 
         for (sort_pos, kmer) in sorted_kmers.into_iter().enumerate() {
             permutation[kmer.to_u64() as usize] = sort_pos;
@@ -451,6 +450,7 @@ mod test {
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[cfg_attr(feature = "slow_tests", test)]
     fn test_gencode_full_build_64() -> Result<(), Error> {
         let msg = "For full txome indexing test, download from ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_28/gencode.v28.transcripts.fa.gz, un-gzip and place in test/gencode.v28.transcripts.fa";

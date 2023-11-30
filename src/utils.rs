@@ -158,6 +158,6 @@ pub(crate) fn get_next_record<R: io::BufRead>(
 
 pub(crate) fn open_file<P: AsRef<Path>>(filename: &str, outdir: P) -> Result<File, Error> {
     let out_fn = outdir.as_ref().join(filename);
-    let outfile = File::create(&out_fn)?;
+    let outfile = File::create(out_fn)?;
     Ok(outfile)
 }

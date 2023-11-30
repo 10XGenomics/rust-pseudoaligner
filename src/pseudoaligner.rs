@@ -483,14 +483,6 @@ pub fn process_reads<K: Kmer + Sync + Send, P: AsRef<Path> + Debug>(
                     dead_thread_count += 1;
                     if dead_thread_count == num_threads {
                         drop(tx);
-                        // can't continue with a flag check
-                        // weird Rusty way !
-                        // Consume whatever is remaining
-                        // Not worrying about counters; hunch is their
-                        // should be less
-                        for eq_class in rx.iter() {
-                            eq_class.map_or((), |eq_class| eprintln!("{:?}", eq_class));
-                        }
                         break;
                     }
                 }
