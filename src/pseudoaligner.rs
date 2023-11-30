@@ -16,13 +16,14 @@ use anyhow::Error;
 use debruijn::graph::DebruijnGraph;
 use debruijn::{Dir, Kmer, Mer, Vmer};
 use log::info;
+
 use serde::{Deserialize, Serialize};
 
 use crate::config::{DEFAULT_ALLOWED_MISMATCHES, LEFT_EXTEND_FRACTION, READ_COVERAGE_THRESHOLD};
 use crate::equiv_classes::EqClassIdType;
 use crate::utils;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct Pseudoaligner<K: Kmer> {
     pub dbg: DebruijnGraph<K, EqClassIdType>,
     pub eq_classes: Vec<Vec<u32>>,

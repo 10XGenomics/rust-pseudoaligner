@@ -194,7 +194,7 @@ fn make_dbg_index<K: Kmer + Sync + Send>(
     println!("Making mphf of kmers");
     let mphf =
         //boomphf::Mphf::from_chunked_iterator(1.7, dbg, total_kmers);
-        boomphf::Mphf::from_chunked_iterator_parallel(1.7, dbg, None, total_kmers, num_threads);
+        boomphf::Mphf::from_chunked_iterator_parallel(1.7, dbg, None, total_kmers as u64, num_threads);
 
     println!("Assigning offsets to kmers");
     let mut node_and_offsets = Vec::with_capacity(total_kmers);
