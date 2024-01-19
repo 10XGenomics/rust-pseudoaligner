@@ -17,7 +17,7 @@ flate2 = "1.0"
 itertools = "0.10"
 lazy_static = "1.4"
 log = "0.4"
-rayon = "1.7"
+rayon = "1.8"
 serde = "1.0"
 boomphf = { version = "^0.6", features = ["serde"] }
 dashmap = "5"
