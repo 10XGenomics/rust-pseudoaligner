@@ -265,7 +265,7 @@ mod test {
         // compute the equivalence class of each kmer
         for (i, s) in seqs.iter().enumerate() {
             for k in s.iter_kmers::<K>() {
-                let eq = eqclasses.entry(k).or_insert_with(Vec::new);
+                let eq = eqclasses.entry(k).or_default();
                 eq.push(i as u32)
             }
         }
