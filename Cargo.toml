@@ -36,3 +36,16 @@ debug = 1
 [features]
 default = []
 slow_tests = []
+
+[lints.rust]
+future_incompatible = "warn"
+nonstandard_style = "warn"
+unused_must_use = "deny"
+
+[lints.clippy]
+perf = "deny"
+style = "deny"
+wildcard_imports = "deny"
+unused_io_amount = "forbid"
+redundant_closure_for_method_calls = "deny"
+comparison_chain = "allow"

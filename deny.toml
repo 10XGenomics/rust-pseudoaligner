@@ -73,11 +73,6 @@ multiple-versions = "deny"
 wildcards = "allow"
 highlight = "all"
 
-[[bans.skip]]
-# proptest depends on both versions 1 and 2.
-name = "quick-error"
-version = "1.2.3"
-
 # This section is considered when running `cargo deny check sources`.
 # More documentation about the 'sources' section can be found here:
 # https://embarkstudios.github.io/cargo-deny/checks/sources/cfg.html
